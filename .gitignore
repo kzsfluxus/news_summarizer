@@ -1,0 +1,6 @@
+__pycache__
+output/*.md
+output/*.html
+output/*.db
+outpu/jobs/*
+.venv

@@ -1,0 +1,24 @@
+{
+  "job_id": "59aade9b894e4c9ca09d045dcf981113",
+  "stage": "error",
+  "progress": 100,
+  "message": "Hiba történt",
+  "html": "",
+  "error": "HTTPConnectionPool(host='127.0.0.1', port=11434): Read timed out. (read timeout=600)",
+  "stats": {
+    "rss_count": 73,
+    "new_urls": 9,
+    "cache_hits": 21,
+    "scraped_ok": 7,
+    "duplicates_removed": 1,
+    "used_for_summary": 30,
+    "scrape_errors": 1,
+    "translation_count": 4,
+    "lang_stats": {
+      "hu": 3,
+      "de": 1,
+      "fr": 2,
+      "en": 1
+    }
+  }
+}

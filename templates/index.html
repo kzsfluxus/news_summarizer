@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hírösszefoglaló</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --card2: #1e293b;
+      --text: #e5e7eb;
+      --muted: #cbd5e1;
+      --border: #334155;
+      --accent: #22c55e;
+      --accent2: #3b82f6;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 0 1rem 2rem;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem 1.2rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    }
+    .controls { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
+    button, select {
+      font-size: 1rem;
+      padding: .7rem 1rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: var(--text);
+    }
+    button { cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .bar { width: 100%; height: 24px; background: var(--card2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+    .fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .35s ease; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; margin-top: 1rem; }
+    .stat { background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: .8rem; }
+    .label { color: var(--muted); font-size: .9rem; margin-bottom: .35rem; }
+    .value { font-size: 1.3rem; font-weight: 700; }
+    .pill { display: inline-block; padding: .25rem .6rem; border-radius: 999px; background: #16304a; border: 1px solid #294968; }
+    iframe { width: 100%; min-height: 820px; border: 1px solid var(--border); border-radius: 16px; background: white; }
+    .muted { color: var(--muted); }
+    .warning { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <section class="card">
+      <h1>Hírösszefoglaló v3</h1>
+      <p class="muted">SQLite cache, automatikus Ollama subprocess, duplikátumszűrés, fordítás és tartós helyi tárolás.</p>
+      <div class="controls">
+        <select id="window">
+          <option value="12h">Elmúlt 12 óra</option>
+          <option value="24h" selected>Elmúlt 24 óra</option>
+          <option value="7d">Elmúlt 1 hét</option>
+        </select>
+        <button id="runBtn">Összefoglaló készítése</button>
+        <span class="pill" id="jobPill">Nincs aktív feladat</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Folyamat</h2>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <p id="statusText">Készen áll</p>
+      <div class="stats">
+        <div class="stat"><div class="label">RSS találatok</div><div class="value" id="rssCount">0</div></div>
+        <div class="stat"><div class="label">Új URL-ek</div><div class="value" id="newCount">0</div></div>
+        <div class="stat"><div class="label">Cache találatok</div><div class="value" id="cacheCount">0</div></div>
+        <div class="stat"><div class="label">Letöltött cikkek</div><div class="value" id="scrapedCount">0</div></div>
+        <div class="stat"><div class="label">Duplikátumok</div><div class="value" id="dupCount">0</div></div>
+        <div class="stat"><div class="label">Fordítások</div><div class="value" id="translationCount">0</div></div>
+        <div class="stat"><div class="label">Felhasznált cikkek</div><div class="value" id="usedCount">0</div></div>
+        <div class="stat"><div class="label">Hibák</div><div class="value" id="errorCount">0</div></div>
+      </div>
+      <p class="warning" id="errorText"></p>
+    </section>
+
+    <section class="card">
+      <h2>Összefoglaló</h2>
+      <iframe id="resultFrame"></iframe>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "job_id": "0aa0582c1bb54614840091b1a49d23a7",
+  "stage": "error",
+  "progress": 100,
+  "message": "Hiba történt",
+  "html": "",
+  "error": "'\\n      --bg'",
+  "stats": {
+    "rss_count": 67,
+    "new_urls": 6,
+    "cache_hits": 24,
+    "scraped_ok": 6,
+    "duplicates_removed": 0,
+    "used_for_summary": 8,
+    "scrape_errors": 0,
+    "translation_count": 1,
+    "lang_stats": {
+      "hu": 5,
+      "de": 1
+    }
+  }
+}

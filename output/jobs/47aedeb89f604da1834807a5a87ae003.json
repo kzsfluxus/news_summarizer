@@ -1,0 +1,22 @@
+{
+  "job_id": "47aedeb89f604da1834807a5a87ae003",
+  "stage": "done",
+  "progress": 100,
+  "message": "Kész",
+  "html": "<!doctype html>\n<html lang=\"hu\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Hírösszefoglaló</title>\n  <style>\n    :root {\n      --bg: #0f172a;\n      --card: #111827;\n      --muted: #cbd5e1;\n      --text: #e5e7eb;\n      --border: #334155;\n      --link: #93c5fd;\n      --code: #1e293b;\n    }\n    body {\n      font-family: Inter, system-ui, sans-serif;\n      max-width: 920px;\n      margin: 2rem auto;\n      padding: 0 1rem 3rem;\n      background: var(--bg);\n      color: var(--text);\n      line-height: 1.75;\n    }\n    article {\n      background: var(--card);\n      border: 1px solid var(--border);\n      border-radius: 18px;\n      padding: 1.5rem;\n      box-shadow: 0 12px 32px rgba(0,0,0,0.18);\n    }\n    h1, h2, h3 { color: white; }\n    h1 { border-bottom: 1px solid var(--border); padding-bottom: .75rem; }\n    a { color: var(--link); }\n    code { background: var(--code); padding: 0.15rem 0.35rem; border-radius: 6px; }\n    pre { background: var(--code); padding: 1rem; border-radius: 12px; overflow-x: auto; }\n    blockquote { border-left: 4px solid var(--border); padding-left: 1rem; color: var(--muted); }\n    hr { border: 0; border-top: 1px solid var(--border); }\n    ul, ol { padding-left: 1.35rem; }\n  </style>\n</head>\n<body>\n<article><h1>Rövid hírösszefoglaló</h1>\n<h2>Fő témák</h2>\n<ul>\n<li>Az Izrael elleni huthi támadások új frontot nyitnak a közel-keleti háborúban, fenyegetik a Vörös-tengeri hajózást.</li>\n<li>Baj van az árammal, az egész dél-balatoni vonalon leállt a vonatközlekedés.</li>\n<li>Az ötöslottó nyereménye kb. 6,25 milliárd forint lesz jövő héten.</li>\n<li>Milliárdos kártérítéseket fizetnek az amerikai bankok az Epstein-áldozatoknak.</li>\n<li>Trump már az isten pénzét is elrobbantgatta Iránban, de a hadsereg még többet akar.</li>\n<li>Juszt László szerint a kormány Gundalf-videója „már most kabaré”.</li>\n<li>Bródy János: Ami az elmúlt 16 évben kialakult, nem folytatható, mert azzal a kockázattal jár, hogy Magyarország tönkremegy.</li>\n</ul>\n<h2>Folyamatban</h2>\n<ul>\n<li>A támadások február 28-i megindulása óta több, egymással nem teljesen összhangban álló becslés is napvilágot látott a költségekről.</li>\n<li>Antonelli nyert, soha nem volt még ilyen fiatal az F1 csúcsán, Bearman 50 G erejű becsapódást úszott meg.</li>\n</ul>\n<h2>Kultúra</h2>\n<ul>\n<li>Juszt László: „Az, ami ebben az elmúlt 16 évben kialakult közéleti, politikai és kulturális téren, nem folytatható, mert azzal a kockázattal jár, hogy Magyarország tönkremegy. Ez alatt azt értem, hogy búcsút mondhatunk annak a régi álomnak, hogy meghatározó közép-európai nemzet legyünk tudásunk, képességeink és kultúránk révén.”</li>\n</ul>\n<h2>Sport</h2>\n<ul>\n<li>Antonelli nyert, soha nem volt még ilyen fiatal az F1 csúcsán, Bearman 50 G erejű becsapódást úszott meg</li>\n</ul>\n</article>\n</body>\n</html>\n",
+  "error": "",
+  "stats": {
+    "rss_count": 72,
+    "new_urls": 7,
+    "cache_hits": 23,
+    "scraped_ok": 7,
+    "duplicates_removed": 0,
+    "used_for_summary": 8,
+    "scrape_errors": 0,
+    "translation_count": 1,
+    "lang_stats": {
+      "en": 1,
+      "hu": 6
+    }
+  }
+}

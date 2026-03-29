@@ -1,0 +1,40 @@
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = BASE_DIR / "output"
+JOBS_DIR = OUTPUT_DIR / "jobs"
+OUTPUT_DIR.mkdir(exist_ok=True)
+JOBS_DIR.mkdir(exist_ok=True)
+
+DB_PATH = OUTPUT_DIR / "news.db"
+NEWS_MD = OUTPUT_DIR / "news.md"
+SUMMARY_HTML = OUTPUT_DIR / "summary.html"
+FEEDS_FILE = BASE_DIR / "feeds.yaml"
+
+OLLAMA_MODEL = "llama3.2:3b"
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+OLLAMA_START_TIMEOUT = 30
+OLLAMA_WAIT_SECONDS = 0.5
+
+WINDOWS = {
+    "12h": 12,
+    "24h": 24,
+    "7d": 24 * 7,
+}
+
+REQUEST_TIMEOUT = 1200
+MAX_ENTRIES_PER_RUN = 30
+MAX_SUMMARY_ITEMS = 14
+SCRAPE_DELAY_SECONDS = 0.3
+MAX_ARTICLE_CHARS = 12000
+TRANSLATION_CHUNK_SIZE = 3500
+MIN_ARTICLE_TEXT_LENGTH = 400
+CONTEXT_TARGET_CHARS = 700
+MINI_SUMMARY_SENTENCES = 5
+USER_AGENT = "Mozilla/5.0 news-summarizer/3.0"
+
+# Ollama generálási beállítások
+OLLAMA_TEMPERATURE = 0.2
+OLLAMA_NUM_PREDICT = 700
+OLLAMA_KEEP_ALIVE = 0 

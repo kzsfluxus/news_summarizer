@@ -1,0 +1,60 @@
+feeds:
+  - name: Telex
+    lang: hu
+    country: HU
+    category: hirek
+    rss: https://telex.hu/rss
+
+  - name: HVG
+    lang: hu
+    country: HU
+    category: hirek
+    rss: https://hvg.hu/rss
+
+  - name: 444
+    lang: hu
+    country: HU
+    category: hirek
+    rss: https://444.hu/feed
+
+  - name: Reuters World
+    lang: en
+    country: INT
+    category: hirek
+    rss: https://feeds.reuters.com/reuters/worldNews
+
+  - name: AP News
+    lang: en
+    country: US
+    category: hirek
+    rss: https://apnews.com/hub/ap-top-news?output=rss
+
+  - name: France 24 English
+    lang: en
+    country: FR
+    category: hirek
+    rss: https://www.france24.com/en/rss
+
+  - name: Tagesschau
+    lang: de
+    country: DE
+    category: hirek
+    rss: https://www.tagesschau.de/infoservices/rss2-100~rss2.xml
+
+  - name: Deutschlandfunk Nachrichten
+    lang: de
+    country: DE
+    category: hirek
+    rss: https://www.deutschlandfunk.de/nachrichten-100.rss
+
+  - name: France Info
+    lang: fr
+    country: FR
+    category: hirek
+    rss: https://www.francetvinfo.fr/titres.rss
+
+  - name: RFI Monde
+    lang: fr
+    country: FR
+    category: hirek
+    rss: https://www.rfi.fr/fr/podcasts/journal-en-fran%C3%A7ais-facile/rss
