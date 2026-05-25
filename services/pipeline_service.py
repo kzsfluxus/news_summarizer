@@ -22,7 +22,14 @@ from config import (
     WINDOWS,
 )
 from prompt_builder import build_prompt
-from services.db_service import article_exists, hash_exists, list_articles_since, save_article, save_summary
+from services.db_service import (
+    article_exists,
+    hash_exists,
+    list_articles_since,
+    save_article,
+    save_summary,
+    sync_sources,
+)
 from services.feed_service import collect_recent_entries, load_feeds
 from services.html_service import markdown_to_html
 from services.job_service import JobRegistry
@@ -55,6 +62,10 @@ def _run_pipeline(job_id: str, window: str) -> None:
     try:
         hours_back = WINDOWS.get(window, 24)
         feeds = load_feeds(str(FEEDS_FILE))
+
+        # Forrásokat szinkronizáljuk a DB-be
+        sync_sources(feeds)
+
         _update(job_id, "rss", 5, "RSS feedek beolvasása", stats)
         entries = collect_recent_entries(feeds, hours_back, sleep_seconds=SCRAPE_DELAY_SECONDS)
         stats["rss_count"] = len(entries)
@@ -127,10 +138,10 @@ def _run_pipeline(job_id: str, window: str) -> None:
         ollama_proc = ensure_ollama()
         prompt = build_prompt(news_markdown, window)
         summary_md = run_ollama(prompt, model=OLLAMA_MODEL, url=OLLAMA_URL)
-        
+
         if not summary_md or not summary_md.strip():
             raise RuntimeError("Az Ollama üres választ adott vissza.")
-        
+
         _update(job_id, "html", 95, "HTML előállítása", stats)
         html = markdown_to_html(summary_md)
         SUMMARY_HTML.write_text(html, encoding="utf-8")

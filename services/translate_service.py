@@ -15,7 +15,8 @@ def chunk_text(text: str, chunk_size: int = 3500) -> list[str]:
     while start < len(text):
         end = min(start + chunk_size, len(text))
         if end < len(text):
-            split_pos = text.rfind("\n")
+            # rfind az [start:end] ablakban keres, nem a teljes szövegben
+            split_pos = text.rfind("\n", start, end)
             if split_pos <= start:
                 split_pos = text.rfind(" ", start, end)
             if split_pos > start:

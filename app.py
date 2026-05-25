@@ -16,10 +16,15 @@ def index():
 
 @app.route("/run", methods=["POST"])
 def run_job():
+    # Ha már fut egy job, visszaadjuk annak ID-ját, nem indítunk újat
+    active = registry.active_job()
+    if active:
+        return jsonify({"ok": True, "job_id": active.job_id, "already_running": True})
+
     payload = request.get_json(silent=True) or {}
     window = payload.get("window", "24h")
     job_id = start_job(window)
-    return jsonify({"ok": True, "job_id": job_id})
+    return jsonify({"ok": True, "job_id": job_id, "already_running": False})
 
 
 @app.route("/status/<job_id>")

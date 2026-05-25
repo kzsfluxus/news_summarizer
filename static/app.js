@@ -56,6 +56,11 @@ async function runJob() {
     body: JSON.stringify({ window: windowValue })
   });
   const data = await res.json();
+
+  if (data.already_running) {
+    document.getElementById('statusText').innerText = 'Már fut egy feladat – csatlakozás...';
+  }
+
   currentJobId = data.job_id;
   document.getElementById('jobPill').innerText = `Feladat: ${currentJobId.slice(0, 8)}`;
 

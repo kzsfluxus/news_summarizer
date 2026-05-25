@@ -1,6 +1,28 @@
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Alkalmazás kimenet
+output/*.db
 output/*.md
 output/*.html
-output/*.db
-output/jobs/*.json
-.venv
+output/jobs/
+!output/.gitkeep
+!output/jobs/.gitkeep
+
+# Környezeti konfiguráció
+.env
+*.env.local
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
