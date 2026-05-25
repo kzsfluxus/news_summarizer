@@ -3,10 +3,11 @@ Adatbázis-réteg – SQLite.
 
 Táblák:
   sources          – RSS források (feeds.yaml tükre)
-  articles         – Letöltött és feldolgozott cikkek
-                     + relevance_score mező (2. fázis)
-  article_keywords – KeyBERT kulcsszavak cikkenként (2. fázis)
-  article_entities – GLiNER entitások cikkenként (2. fázis)
+  articles         – Feldolgozott cikkek + relevance_score
+  article_keywords – KeyBERT kulcsszavak
+  article_entities – GLiNER entitások
+  topics           – TF-IDF klaszterek (3. fázis)
+  article_topics   – Cikk–téma kapcsolatok (3. fázis)
   summaries        – Időablakos Ollama összefoglalók
   jobs             – Pipeline job állapotok
 
@@ -25,7 +26,6 @@ from config import DB_PATH
 
 @contextmanager
 def get_conn() -> Iterator[sqlite3.Connection]:
-    """Context manager: kapcsolat nyitás, commit, majd zárás."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -93,6 +93,30 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_entities_type    ON article_entities(entity_type);
             CREATE INDEX IF NOT EXISTS idx_entities_text    ON article_entities(entity_text);
 
+            CREATE TABLE IF NOT EXISTS topics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                window TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                label TEXT NOT NULL,
+                keywords TEXT NOT NULL,
+                article_count INTEGER NOT NULL DEFAULT 0,
+                trend_score REAL NOT NULL DEFAULT 0.0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_topics_window  ON topics(window);
+            CREATE INDEX IF NOT EXISTS idx_topics_trend   ON topics(trend_score DESC);
+
+            CREATE TABLE IF NOT EXISTS article_topics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+                topic_id   INTEGER NOT NULL REFERENCES topics(id)   ON DELETE CASCADE,
+                similarity REAL NOT NULL DEFAULT 0.0,
+                UNIQUE(article_id, topic_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_article_topics_article ON article_topics(article_id);
+            CREATE INDEX IF NOT EXISTS idx_article_topics_topic   ON article_topics(topic_id);
+
             CREATE TABLE IF NOT EXISTS summaries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 window TEXT NOT NULL,
@@ -115,15 +139,13 @@ def init_db() -> None:
             );
             """
         )
-        # Meglévő adatbázisban is létrehozza az új oszlopot/indexet, ha még nem létezik
         _migrate(conn)
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """
     Inkrementális séma migráció: csak akkor futtat ALTER TABLE-t,
-    ha az adott oszlop még nem létezik. Így a meglévő adatbázis is
-    frissíthető újratelepítés nélkül.
+    ha az adott oszlop még nem létezik.
     """
     existing = {
         row[1]
@@ -152,13 +174,8 @@ def sync_sources(feeds: list[dict]) -> None:
                     category = excluded.category,
                     rss_url  = excluded.rss_url
                 """,
-                (
-                    feed["name"],
-                    feed["lang"],
-                    feed.get("country", ""),
-                    feed.get("category", "hirek"),
-                    feed["rss"],
-                ),
+                (feed["name"], feed["lang"], feed.get("country", ""),
+                 feed.get("category", "hirek"), feed["rss"]),
             )
 
 
@@ -174,16 +191,16 @@ def list_sources() -> list[dict]:
 
 def article_exists(url: str) -> bool:
     with get_conn() as conn:
-        row = conn.execute("SELECT 1 FROM articles WHERE url = ? LIMIT 1", (url,)).fetchone()
-        return row is not None
+        return conn.execute(
+            "SELECT 1 FROM articles WHERE url = ? LIMIT 1", (url,)
+        ).fetchone() is not None
 
 
 def hash_exists(content_hash: str) -> bool:
     with get_conn() as conn:
-        row = conn.execute(
+        return conn.execute(
             "SELECT 1 FROM articles WHERE content_hash = ? LIMIT 1", (content_hash,)
-        ).fetchone()
-        return row is not None
+        ).fetchone() is not None
 
 
 def save_article(item: dict) -> None:
@@ -195,25 +212,15 @@ def save_article(item: dict) -> None:
                 scraped_at, content, content_hu, content_hash, mini_summary_hu
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                item["link"],
-                item["title"],
-                item["source"],
-                item["lang"],
-                item.get("country", ""),
-                item.get("category", "hirek"),
-                item.get("published", ""),
-                datetime.now(timezone.utc).isoformat(),
-                item["clean_text"],
-                item["clean_text_hu"],
-                item["content_hash"],
-                item["mini_summary_hu"],
-            ),
+            (item["link"], item["title"], item["source"], item["lang"],
+             item.get("country", ""), item.get("category", "hirek"),
+             item.get("published", ""), datetime.now(timezone.utc).isoformat(),
+             item["clean_text"], item["clean_text_hu"],
+             item["content_hash"], item["mini_summary_hu"]),
         )
 
 
 def get_article_id(url: str) -> int | None:
-    """Visszaadja a cikk DB-beli id-ját URL alapján."""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id FROM articles WHERE url = ? LIMIT 1", (url,)
@@ -222,18 +229,16 @@ def get_article_id(url: str) -> int | None:
 
 
 def update_relevance_score(article_id: int, score: float) -> None:
-    """Frissíti egy cikk relevancia-pontszámát."""
     with get_conn() as conn:
         conn.execute(
-            "UPDATE articles SET relevance_score = ? WHERE id = ?",
-            (score, article_id),
+            "UPDATE articles SET relevance_score = ? WHERE id = ?", (score, article_id)
         )
 
 
 def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
     """
-    Visszaadja a cutoff_iso utáni cikkeket relevancia-score szerint csökkenő
-    sorrendben, a hozzájuk tartozó kulcsszavakkal és entitásokkal együtt.
+    Visszaadja a cutoff_iso utáni cikkeket relevancia-score szerint,
+    keywords, entities és topics mezőkkel kiegészítve.
     """
     try:
         dt = datetime.fromisoformat(cutoff_iso)
@@ -246,8 +251,7 @@ def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT *
-            FROM articles
+            SELECT * FROM articles
             WHERE published >= ?
             ORDER BY relevance_score DESC, published DESC
             LIMIT ?
@@ -259,6 +263,7 @@ def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
     for article in articles:
         article["keywords"] = get_keywords_for_article(article["id"])
         article["entities"] = get_entities_for_article(article["id"])
+        article["topics"]   = get_topics_for_article(article["id"])
 
     return articles
 
@@ -268,47 +273,24 @@ def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def save_keywords(article_id: int, keywords: list[dict]) -> None:
-    """
-    Elmenti a KeyBERT által kinyert kulcsszavakat.
-
-    Args:
-        article_id: Az articles tábla id mezője.
-        keywords:   Lista dict-ekből; minden elem: {keyword, score}.
-                    Duplikátumokat (article_id, keyword) alapján kihagyja.
-    """
     with get_conn() as conn:
         for kw in keywords:
             conn.execute(
-                """
-                INSERT OR IGNORE INTO article_keywords (article_id, keyword, score)
-                VALUES (?, ?, ?)
-                """,
+                "INSERT OR IGNORE INTO article_keywords (article_id, keyword, score) VALUES (?, ?, ?)",
                 (article_id, kw["keyword"], kw.get("score", 0.0)),
             )
 
 
 def get_keywords_for_article(article_id: int) -> list[dict]:
-    """Visszaadja egy cikk kulcsszavait score szerint csökkenő sorrendben."""
     with get_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT keyword, score
-            FROM article_keywords
-            WHERE article_id = ?
-            ORDER BY score DESC
-            """,
+            "SELECT keyword, score FROM article_keywords WHERE article_id = ? ORDER BY score DESC",
             (article_id,),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
 def get_top_keywords_since(cutoff_iso: str, limit: int = 40) -> list[dict]:
-    """
-    Visszaadja az adott időablakban legtöbbször előforduló kulcsszavakat.
-
-    Returns:
-        Lista dict-ekből: {keyword, count, avg_score}
-    """
     try:
         dt = datetime.fromisoformat(cutoff_iso)
         if dt.tzinfo is None:
@@ -316,14 +298,10 @@ def get_top_keywords_since(cutoff_iso: str, limit: int = 40) -> list[dict]:
         cutoff_normalized = dt.astimezone(timezone.utc).isoformat()
     except ValueError:
         cutoff_normalized = cutoff_iso
-
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT
-                ak.keyword,
-                COUNT(*) AS count,
-                AVG(ak.score) AS avg_score
+            SELECT ak.keyword, COUNT(*) AS count, AVG(ak.score) AS avg_score
             FROM article_keywords ak
             JOIN articles a ON a.id = ak.article_id
             WHERE a.published >= ?
@@ -344,36 +322,21 @@ def save_entities(article_id: int, entities: list[dict]) -> None:
     with get_conn() as conn:
         for ent in entities:
             conn.execute(
-                """
-                INSERT OR IGNORE INTO article_entities (article_id, entity_text, entity_type, score)
-                VALUES (?, ?, ?, ?)
-                """,
+                "INSERT OR IGNORE INTO article_entities (article_id, entity_text, entity_type, score) VALUES (?, ?, ?, ?)",
                 (article_id, ent["text"], ent["type"], ent.get("score", 0.0)),
             )
 
 
 def get_entities_for_article(article_id: int) -> list[dict]:
-    """Visszaadja egy cikk entitásait score szerint csökkenő sorrendben."""
     with get_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT entity_text, entity_type, score
-            FROM article_entities
-            WHERE article_id = ?
-            ORDER BY score DESC
-            """,
+            "SELECT entity_text, entity_type, score FROM article_entities WHERE article_id = ? ORDER BY score DESC",
             (article_id,),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
 def get_top_entities_since(cutoff_iso: str, limit: int = 30) -> list[dict]:
-    """
-    Visszaadja az adott időablakban legtöbbször előforduló entitásokat.
-
-    Returns:
-        Lista dict-ekből: {entity_text, entity_type, count, avg_score}
-    """
     try:
         dt = datetime.fromisoformat(cutoff_iso)
         if dt.tzinfo is None:
@@ -381,15 +344,10 @@ def get_top_entities_since(cutoff_iso: str, limit: int = 30) -> list[dict]:
         cutoff_normalized = dt.astimezone(timezone.utc).isoformat()
     except ValueError:
         cutoff_normalized = cutoff_iso
-
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT
-                ae.entity_text,
-                ae.entity_type,
-                COUNT(*) AS count,
-                AVG(ae.score) AS avg_score
+            SELECT ae.entity_text, ae.entity_type, COUNT(*) AS count, AVG(ae.score) AS avg_score
             FROM article_entities ae
             JOIN articles a ON a.id = ae.article_id
             WHERE a.published >= ?
@@ -403,16 +361,118 @@ def get_top_entities_since(cutoff_iso: str, limit: int = 30) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Topics
+# ---------------------------------------------------------------------------
+
+def save_topics(window: str, topics: list[dict]) -> list[int]:
+    """
+    Elmenti a kiszámított témákat és visszaadja az INSERT-elt id-kat.
+
+    Args:
+        window: Időablak azonosítója ("12h", "24h", "7d").
+        topics: Lista dict-ekből; minden elem:
+                {label, keywords (vesszős string), article_count, trend_score}
+
+    Returns:
+        Az újonnan beszúrt topic id-k listája (azonos sorrendben).
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    ids: list[int] = []
+    with get_conn() as conn:
+        for topic in topics:
+            cur = conn.execute(
+                """
+                INSERT INTO topics (window, created_at, label, keywords, article_count, trend_score)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (window, now, topic["label"], topic["keywords"],
+                 topic["article_count"], topic.get("trend_score", 0.0)),
+            )
+            ids.append(cur.lastrowid)
+    return ids
+
+
+def save_article_topics(article_id: int, topic_assignments: list[dict]) -> None:
+    """
+    Elmenti a cikk–téma kapcsolatokat.
+
+    Args:
+        article_id:         Az articles tábla id mezője.
+        topic_assignments:  Lista dict-ekből: {topic_id, similarity}.
+    """
+    with get_conn() as conn:
+        for ta in topic_assignments:
+            conn.execute(
+                "INSERT OR IGNORE INTO article_topics (article_id, topic_id, similarity) VALUES (?, ?, ?)",
+                (article_id, ta["topic_id"], ta["similarity"]),
+            )
+
+
+def get_topics_for_article(article_id: int) -> list[dict]:
+    """Visszaadja egy cikk témáit similarity szerint csökkenő sorrendben."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT t.id, t.label, t.keywords, t.trend_score, at.similarity
+            FROM article_topics at
+            JOIN topics t ON t.id = at.topic_id
+            WHERE at.article_id = ?
+            ORDER BY at.similarity DESC
+            """,
+            (article_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_topics_since(cutoff_iso: str) -> list[dict]:
+    """
+    Visszaadja az időablakon belül keletkezett témákat trend_score szerint,
+    az egyes témákhoz tartozó legjobb 3 cikkcímmel együtt.
+    """
+    try:
+        dt = datetime.fromisoformat(cutoff_iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff_normalized = dt.astimezone(timezone.utc).isoformat()
+    except ValueError:
+        cutoff_normalized = cutoff_iso
+
+    with get_conn() as conn:
+        topics = [
+            dict(row) for row in conn.execute(
+                """
+                SELECT * FROM topics
+                WHERE created_at >= ?
+                ORDER BY trend_score DESC
+                """,
+                (cutoff_normalized,),
+            ).fetchall()
+        ]
+        for topic in topics:
+            rows = conn.execute(
+                """
+                SELECT a.title, a.source, a.published, at.similarity
+                FROM article_topics at
+                JOIN articles a ON a.id = at.article_id
+                WHERE at.topic_id = ?
+                ORDER BY at.similarity DESC
+                LIMIT 3
+                """,
+                (topic["id"],),
+            ).fetchall()
+            topic["top_articles"] = [dict(r) for r in rows]
+
+    return topics
+
+
+# ---------------------------------------------------------------------------
 # Summaries
 # ---------------------------------------------------------------------------
 
 def save_summary(window: str, content_md: str, html: str, source_count: int) -> None:
     with get_conn() as conn:
         conn.execute(
-            """
-            INSERT INTO summaries (window, created_at, content_md, html, source_count)
-            VALUES (?, ?, ?, ?, ?)
-            """,
+            "INSERT INTO summaries (window, created_at, content_md, html, source_count) VALUES (?, ?, ?, ?, ?)",
             (window, datetime.now(timezone.utc).isoformat(), content_md, html, source_count),
         )
 
@@ -421,10 +481,8 @@ def save_summary(window: str, content_md: str, html: str, source_count: int) -> 
 # Jobs
 # ---------------------------------------------------------------------------
 
-def upsert_job(
-    job_id: str, stage: str, progress: int, message: str,
-    html: str, error: str, stats: str,
-) -> None:
+def upsert_job(job_id: str, stage: str, progress: int, message: str,
+               html: str, error: str, stats: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
@@ -432,13 +490,9 @@ def upsert_job(
             INSERT INTO jobs (job_id, stage, progress, message, html, error, stats, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
-                stage      = excluded.stage,
-                progress   = excluded.progress,
-                message    = excluded.message,
-                html       = excluded.html,
-                error      = excluded.error,
-                stats      = excluded.stats,
-                updated_at = excluded.updated_at
+                stage=excluded.stage, progress=excluded.progress, message=excluded.message,
+                html=excluded.html, error=excluded.error, stats=excluded.stats,
+                updated_at=excluded.updated_at
             """,
             (job_id, stage, progress, message, html, error, stats, now, now),
         )
@@ -451,12 +505,11 @@ def get_job(job_id: str) -> dict | None:
 
 
 def get_active_job() -> dict | None:
-    """Visszaadja az éppen futó jobot (ha van)."""
-    running_stages = ("rss", "scrape", "ner", "keywords", "relevance", "markdown", "ollama", "html")
-    placeholders = ",".join("?" * len(running_stages))
+    running = ("rss", "scrape", "ner", "keywords", "relevance", "topics", "markdown", "ollama", "html")
+    placeholders = ",".join("?" * len(running))
     with get_conn() as conn:
         row = conn.execute(
             f"SELECT * FROM jobs WHERE stage IN ({placeholders}) ORDER BY created_at DESC LIMIT 1",
-            running_stages,
+            running,
         ).fetchone()
         return dict(row) if row else None

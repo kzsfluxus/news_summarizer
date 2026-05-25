@@ -2,71 +2,71 @@
 <html lang="hu">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Hírösszefoglaló</title>
   <style>
     :root {
-      --bg: #0f172a; --card: #111827; --card2: #1e293b;
-      --text: #e5e7eb; --muted: #94a3b8; --border: #334155;
-      --green: #22c55e; --blue: #3b82f6; --warn: #f59e0b;
+      --bg:#0f172a; --card:#111827; --card2:#1e293b;
+      --text:#e5e7eb; --muted:#94a3b8; --border:#334155;
+      --green:#22c55e; --blue:#3b82f6; --warn:#f59e0b;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: Inter, system-ui, sans-serif;
-      max-width: 1200px; margin: 2rem auto; padding: 0 1rem 3rem;
-      background: var(--bg); color: var(--text); line-height: 1.6;
-    }
-    h1 { font-size: 1.5rem; font-weight: 700; }
-    h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: .75rem; }
-    .card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 16px; padding: 1.2rem 1.4rem;
-      box-shadow: 0 8px 24px rgba(0,0,0,.2); margin-bottom: 1rem;
-    }
-    .subtitle { color: var(--muted); font-size: .9rem; margin: .25rem 0 1rem; }
-    .controls { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
-    button, select {
-      font-size: .95rem; padding: .6rem 1rem; border-radius: 10px;
-      border: 1px solid var(--border); background: var(--card2); color: var(--text);
-    }
-    button { cursor: pointer; transition: opacity .15s; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .pill {
-      display: inline-block; padding: .25rem .65rem; border-radius: 999px;
-      background: #16304a; border: 1px solid #294968; font-size: .85rem;
-    }
-    .bar { width: 100%; height: 20px; background: var(--card2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); margin-bottom: .6rem; }
-    .fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--green), var(--blue)); transition: width .3s ease; }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: .6rem; margin-top: .75rem;
-    }
-    .stat { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: .65rem .85rem; }
-    .label { color: var(--muted); font-size: .8rem; margin-bottom: .2rem; }
-    .value { font-size: 1.2rem; font-weight: 700; }
-    .warning { color: var(--warn); font-size: .9rem; margin-top: .5rem; min-height: 1.2rem; }
-    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 700px) { .panels { grid-template-columns: 1fr; } }
-    .entity-group { margin-bottom: .85rem; }
-    .entity-type-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .35rem; }
-    .tag-row { display: flex; flex-wrap: wrap; gap: .35rem; }
-    .tag {
-      display: inline-flex; align-items: center; gap: .25rem;
-      padding: .2rem .55rem; border-radius: 999px; border: 1px solid;
-      font-size: .82rem; cursor: default;
-    }
-    .kw-tag { border-radius: 8px; }
-    .tag-count { background: rgba(255,255,255,.15); border-radius: 999px; padding: 0 .3rem; font-size: .72rem; font-weight: 700; }
-    .muted { color: var(--muted); font-size: .9rem; }
-    iframe { width: 100%; min-height: 820px; border: 1px solid var(--border); border-radius: 14px; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Inter,system-ui,sans-serif;max-width:1200px;margin:2rem auto;
+         padding:0 1rem 3rem;background:var(--bg);color:var(--text);line-height:1.6}
+    h1{font-size:1.45rem;font-weight:700}
+    h2{font-size:1.05rem;font-weight:600;margin-bottom:.7rem}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;
+          padding:1.2rem 1.4rem;box-shadow:0 8px 24px rgba(0,0,0,.2);margin-bottom:1rem}
+    .subtitle{color:var(--muted);font-size:.85rem;margin:.2rem 0 .9rem}
+    .controls{display:flex;gap:.7rem;flex-wrap:wrap;align-items:center}
+    button,select{font-size:.92rem;padding:.55rem .9rem;border-radius:10px;
+                  border:1px solid var(--border);background:var(--card2);color:var(--text)}
+    button{cursor:pointer;transition:opacity .15s}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .pill{display:inline-block;padding:.22rem .6rem;border-radius:999px;
+          background:#16304a;border:1px solid #294968;font-size:.82rem}
+    .newsletter-link{display:none;padding:.4rem .9rem;border-radius:10px;
+                     background:#14532d;border:1px solid #166534;color:#86efac;
+                     font-size:.85rem;text-decoration:none}
+    .bar{width:100%;height:18px;background:var(--card2);border-radius:999px;
+         overflow:hidden;border:1px solid var(--border);margin-bottom:.55rem}
+    .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--blue));
+          transition:width .3s ease}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.55rem;margin-top:.7rem}
+    .stat{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem}
+    .label{color:var(--muted);font-size:.78rem;margin-bottom:.15rem}
+    .value{font-size:1.15rem;font-weight:700}
+    .warning{color:var(--warn);font-size:.88rem;margin-top:.45rem;min-height:1.1rem}
+    .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    @media(max-width:900px){.three-col{grid-template-columns:1fr 1fr}}
+    @media(max-width:600px){.three-col,.two-col{grid-template-columns:1fr}}
+    .entity-group{margin-bottom:.8rem}
+    .type-label{font-size:.72rem;font-weight:600;text-transform:uppercase;
+                letter-spacing:.06em;margin-bottom:.3rem}
+    .tag-row{display:flex;flex-wrap:wrap;gap:.3rem}
+    .tag{display:inline-flex;align-items:center;gap:.22rem;padding:.18rem .5rem;
+         border-radius:999px;border:1px solid;font-size:.8rem;cursor:default}
+    .kw-tag{border-radius:7px}
+    .badge{background:rgba(255,255,255,.15);border-radius:999px;
+           padding:0 .28rem;font-size:.7rem;font-weight:700}
+    .topic-card{background:var(--card2);border:1px solid var(--border);
+                border-radius:12px;padding:.9rem 1rem;margin-bottom:.7rem}
+    .topic-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem}
+    .topic-label{font-weight:600;font-size:.95rem;color:#f1f5f9}
+    .topic-meta{font-size:.75rem;color:var(--muted);white-space:nowrap;margin-left:.5rem}
+    .topic-kw{font-size:.78rem;margin-bottom:.45rem}
+    .topic-articles{padding-left:1.1rem;font-size:.8rem;color:#cbd5e1}
+    .topic-article{margin-bottom:.2rem}
+    .muted{color:var(--muted);font-size:.88rem}
+    iframe{width:100%;min-height:820px;border:1px solid var(--border);border-radius:14px}
   </style>
 </head>
 <body>
 
   <div class="card">
     <h1>Hírösszefoglaló</h1>
-    <p class="subtitle">SQLite · Ollama · GLiNER entitáskinyerés · KeyBERT kulcsszavak · Relevancia-ranking</p>
+    <p class="subtitle">SQLite · Ollama · GLiNER · KeyBERT · Relevancia-ranking · TF-IDF témamodellezés</p>
     <div class="controls">
       <select id="window">
         <option value="12h">Elmúlt 12 óra</option>
@@ -75,6 +75,9 @@
       </select>
       <button id="runBtn">Összefoglaló készítése</button>
       <span class="pill" id="jobPill">Nincs aktív feladat</span>
+      <a id="newsletterLink" class="newsletter-link" href="/newsletter" target="_blank">
+        📧 Hírlevél megnyitása
+      </a>
     </div>
   </div>
 
@@ -93,22 +96,28 @@
       <div class="stat"><div class="label">NER hiba</div><div class="value" id="nerErrCount">0</div></div>
       <div class="stat"><div class="label">Kulcsszó sikeres</div><div class="value" id="kwOkCount">0</div></div>
       <div class="stat"><div class="label">Kulcsszó hiba</div><div class="value" id="kwErrCount">0</div></div>
+      <div class="stat"><div class="label">Felismert témák</div><div class="value" id="topicCount">0</div></div>
       <div class="stat"><div class="label">Felhasznált cikkek</div><div class="value" id="usedCount">0</div></div>
       <div class="stat"><div class="label">Scrape hibák</div><div class="value" id="errorCount">0</div></div>
     </div>
     <p class="warning" id="errorText"></p>
   </div>
 
-  <div class="panels">
+  <div class="three-col">
     <div class="card">
       <h2>Entitások</h2>
-      <p class="muted" style="font-size:.82rem;margin-bottom:.75rem">Személyek, szervezetek, helyek, események – előfordulásszámmal.</p>
-      <div id="entityPanel"><p class="muted">Az összefoglaló elkészülte után töltődik be.</p></div>
+      <div id="entityPanel"><p class="muted">Az összefoglaló után töltődik be.</p></div>
     </div>
     <div class="card">
       <h2>Kulcsszavak</h2>
-      <p class="muted" style="font-size:.82rem;margin-bottom:.75rem">KeyBERT szemantikus kulcsszavak – intenzitás a relevancia arányában.</p>
-      <div id="keywordPanel"><p class="muted">Az összefoglaló elkészülte után töltődik be.</p></div>
+      <div id="keywordPanel"><p class="muted">Az összefoglaló után töltődik be.</p></div>
+    </div>
+    <div class="card">
+      <h2>Témák</h2>
+      <p class="muted" style="font-size:.78rem;margin-bottom:.6rem">
+        TF-IDF klaszterek – cikkcsoport + trend-score.
+      </p>
+      <div id="topicPanel"><p class="muted">Az összefoglaló után töltődik be.</p></div>
     </div>
   </div>
 

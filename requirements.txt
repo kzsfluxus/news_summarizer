@@ -2,21 +2,19 @@ Flask==3.1.0
 feedparser==6.0.12
 requests==2.32.3
 trafilatura==2.0.0
-
-# trafilatura dependency fix
 lxml>=5.2
 lxml_html_clean
-
 PyYAML==6.0.2
 deep-translator==1.11.4
-
 markdown-it-py==3.0.0
 mdit-py-plugins==0.4.2
 
-# NER – GLiNER (enyaml/gliner-multi-v2.1, ~400 MB, első indításkor töltődik le)
+# NER – GLiNER (~400 MB, első indításkor töltődik le)
 gliner>=0.2.0
 
-# Kulcsszókinyerés – KeyBERT + sentence-transformers
-# Modell: paraphrase-multilingual-MiniLM-L12-v2 (~120 MB, első indításkor töltődik le)
+# Kulcsszókinyerés – KeyBERT (~120 MB, első indításkor töltődik le)
 keybert>=0.8.0
 sentence-transformers>=3.0.0
+
+# Témamodellezés – csak stdlib + numpy (TF-IDF saját implementáció)
+# numpy a sentence-transformers függősége, külön telepítés nem szükséges
