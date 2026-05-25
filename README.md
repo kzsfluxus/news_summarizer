@@ -1,47 +1,51 @@
 # Hírösszefoglaló
 
-RSS-alapú hírgyűjtő, fordító és összefoglaló rendszer, lokális Ollama inferenciával és GLiNER entitáskinyeréssel.
+RSS-alapú hírgyűjtő, fordító és összefoglaló rendszer, lokális Ollama inferenciával,
+GLiNER entitáskinyeréssel, KeyBERT kulcsszavazással és relevancia-rankinggal.
 
 ## Funkciók
 
-- SQLite alapú helyi tárolás (sources, articles, article_entities, summaries, jobs)
+- SQLite alapú helyi tárolás (sources, articles, article_keywords, article_entities, summaries, jobs)
 - URL-szintű cache – már feldolgozott cikkek kihagyása
 - Tartalom-hash alapú duplikátumszűrés (első 8 mondat SHA-256)
 - Többnyelvű RSS feldolgozás: hu, en, de, fr
 - Chunkolt fordítás magyarra (`deep-translator`)
 - Extraktív mini-összefoglaló (első N mondat)
-- GLiNER alapú entitáskinyerés (személy, szervezet, helyszín, esemény, termék)
+- GLiNER entitáskinyerés (PERSON, ORG, LOCATION, EVENT, PRODUCT)
+- KeyBERT kulcsszókinyerés (paraphrase-multilingual-MiniLM-L12-v2)
+- Relevancia-score ranking (forrásszám + frissesség + entitássúly + kulcsszósúly)
 - Háttérszálas pipeline, job állapot SQLite-ban perzisztálva
 - Automatikus Ollama subprocess kezelés (indítás és leállítás)
 - Párhuzamos job indítás védelme
-- `news.md`, `summary.html`, `news.db` kimenetek
 
 ## Könyvtárstruktúra
 
 ```text
 news_summarizer/
-├── app.py                  # Flask belépési pont, API végpontok
-├── config.py               # Minden hangolható konstans
-├── feeds.yaml              # RSS források konfigurációja
-├── prompt_builder.py       # Ollama system/user prompt összeállítás
+├── app.py                   # Flask belépési pont, API végpontok
+├── config.py                # Minden hangolható konstans
+├── feeds.yaml               # RSS források konfigurációja
+├── prompt_builder.py        # Ollama system/user prompt összeállítás
 ├── requirements.txt
 ├── output/
-│   ├── jobs/               # Megtartva visszafelé kompatibilitásból (üres)
-│   ├── news.db             # SQLite adatbázis
-│   ├── news.md             # Pipeline közbülső kimenete (Ollama bemenet)
-│   └── summary.html        # Végső összefoglaló
+│   ├── jobs/                # Megtartva visszafelé kompatibilitásból (üres)
+│   ├── news.db              # SQLite adatbázis
+│   ├── news.md              # Pipeline közbülső kimenete (Ollama bemenet)
+│   └── summary.html         # Végső összefoglaló
 ├── services/
 │   ├── __init__.py
-│   ├── db_service.py       # Adatbázis-réteg
-│   ├── feed_service.py     # RSS beolvasás, dátumnormalizálás
-│   ├── scrape_service.py   # Cikk letöltés, szövegtisztítás, ujjlenyomat
+│   ├── db_service.py        # Adatbázis-réteg
+│   ├── feed_service.py      # RSS beolvasás, dátumnormalizálás
+│   ├── scrape_service.py    # Cikk letöltés, szövegtisztítás, ujjlenyomat
 │   ├── translate_service.py
-│   ├── ner_service.py      # GLiNER entitáskinyerés
-│   ├── markdown_service.py # news.md előállítása
-│   ├── html_service.py     # Markdown → HTML konverzió
-│   ├── ollama_service.py   # Ollama subprocess és inferencia
-│   ├── job_service.py      # JobRegistry SQLite háttérrel
-│   └── pipeline_service.py # Fő feldolgozási pipeline
+│   ├── ner_service.py       # GLiNER entitáskinyerés
+│   ├── keyword_service.py   # KeyBERT kulcsszókinyerés
+│   ├── relevance_service.py # Relevancia-score számítás
+│   ├── markdown_service.py  # news.md előállítása
+│   ├── html_service.py      # Markdown → HTML konverzió
+│   ├── ollama_service.py    # Ollama subprocess és inferencia
+│   ├── job_service.py       # JobRegistry SQLite háttérrel
+│   └── pipeline_service.py  # Fő feldolgozási pipeline
 ├── static/
 │   └── app.js
 └── templates/
@@ -65,7 +69,8 @@ Az Ollama modell szükséges (ha még nincs letöltve):
 ollama pull llama3.2:3b
 ```
 
-A GLiNER modell (~400 MB) az első pipeline futáskor töltődik le automatikusan a Hugging Face hub-ról.
+A GLiNER (~400 MB) és a KeyBERT sentence-transformer modell (~120 MB) az első
+pipeline futáskor töltődnek le automatikusan a Hugging Face hub-ról.
 
 ## API végpontok
 
@@ -75,44 +80,52 @@ A GLiNER modell (~400 MB) az első pipeline futáskor töltődik le automatikusa
 | `/run` | POST | Pipeline indítása `{"window": "24h"}` payloaddal |
 | `/status/<job_id>` | GET | Job állapot lekérdezése |
 | `/entities/<article_id>` | GET | Egy cikk entitásai |
+| `/keywords/<article_id>` | GET | Egy cikk kulcsszavai |
 | `/top-entities?window=24h` | GET | Leggyakoribb entitások az időablakban |
+| `/top-keywords?window=24h` | GET | Leggyakoribb kulcsszavak az időablakban |
 
 Időablak értékek: `12h`, `24h`, `7d`.
 
 ## Pipeline lépései
 
 1. RSS feedek beolvasása és időablak szerinti szűrés
-2. URL-cache ellenőrzés (már feldolgozott cikkek kihagyása)
-3. Cikk scrape (trafilatura + requests fallback), szövegtisztítás
+2. URL-cache ellenőrzés
+3. Cikk scrape (trafilatura + requests fallback) és szövegtisztítás
 4. Tartalom-hash duplikátumszűrés
-5. Fordítás magyarra (nem-hu cikkek esetén, chunkolt)
+5. Fordítás magyarra (nem-hu cikkek, chunkolt)
 6. Extraktív mini-összefoglaló generálása
 7. SQLite mentés
-8. GLiNER entitáskinyerés a teljes magyar szövegen
-9. `news.md` előállítása az Ollama prompthoz
-10. Ollama inferencia (összefoglaló generálás)
-11. HTML renderelés, mentés, job lezárása
+8. GLiNER entitáskinyerés (content_hu)
+9. KeyBERT kulcsszókinyerés (content_hu)
+10. Relevancia-score batch számítás az időablak összes cikkén
+11. `news.md` előállítása relevancia szerint rendezve
+12. Ollama inferencia (összefoglaló generálás)
+13. HTML renderelés, mentés, job lezárása
 
-## Ollama kezelés
+## Relevancia-score
 
-- Ha az Ollama már fut a `127.0.0.1:11434` címen, a program azt használja
-- Ha nem fut, elindítja `ollama serve` paranccsal
-- A feldolgozás végén csak akkor állítja le, ha ő indította el
-- A modell a válasz után azonnal kikerül a memóriából (`keep_alive: 0`)
+A score négy összetevőből áll (0.0–1.0):
+
+| Összetevő | Súly | Leírás |
+|---|---|---|
+| Forrásszám | 35% | Hány különböző forrás ír hasonló témáról (kulcsszó-átfedés alapján) |
+| Frissesség | 25% | Exponenciális bomlás, 12 órás felezési idővel |
+| Entitássúly | 25% | Entitások száma × átlagos GLiNER konfidencia |
+| Kulcsszósúly | 15% | Top-5 KeyBERT kulcsszó átlagos relevancia-értéke |
 
 ## Adatbázis séma
 
-A `news.db` SQLite adatbázis táblái:
+**sources** – RSS források (feeds.yaml tükre)
 
-**sources** – RSS források (feeds.yaml tükre, pipeline indulásakor szinkronizálva)
+**articles** – Feldolgozott cikkek + `relevance_score` mező
 
-**articles** – Feldolgozott cikkek: url, title, source, lang, country, category, published, scraped_at, content (eredeti), content_hu (fordított), content_hash, mini_summary_hu
+**article_keywords** – KeyBERT kulcsszavak: article_id, keyword, score
 
-**article_entities** – NER entitások: article_id, entity_text, entity_type (PERSON / ORG / LOCATION / EVENT / PRODUCT), score
+**article_entities** – GLiNER entitások: article_id, entity_text, entity_type, score
 
-**summaries** – Időablakos Ollama összefoglalók: window, created_at, content_md, html, source_count
+**summaries** – Időablakos Ollama összefoglalók
 
-**jobs** – Pipeline job állapotok: job_id, stage, progress, message, html, error, stats (JSON), created_at, updated_at
+**jobs** – Pipeline job állapotok
 
 ## Konfigurációs paraméterek (config.py)
 
@@ -129,7 +142,7 @@ A `news.db` SQLite adatbázis táblái:
 ## Korlátok
 
 - A mini-összefoglaló extraktív (első N mondat), nem absztraktív
-- A fordítás `deep-translator` (Google Translate) alapú, API-kulcs nélkül
+- A fordítás `deep-translator` alapú, API-kulcs nélkül
 - A GLiNER magyar NER minősége korlátozott kevésbé ismert entitásoknál
-- Nincs témaszűrés vagy relevancia-ranking (2. fázis fennmaradó feladata)
 - Nincs teljes szöveges keresés (4. fázis)
+- Nincs témamodellezés (3. fázis)

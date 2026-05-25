@@ -1,7 +1,7 @@
 let currentJobId = null;
 let pollTimer = null;
 
-// Entitástípus → megjelenési szín mapping
+// Entitástípus → megjelenési szín
 const TYPE_COLORS = {
   PERSON:   { bg: "#1e3a5f", border: "#3b82f6", label: "Személy" },
   ORG:      { bg: "#1a3a2a", border: "#22c55e", label: "Szervezet" },
@@ -15,33 +15,31 @@ function setStat(id, value) {
   if (el) el.innerText = value ?? 0;
 }
 
+// --- Entitás panel ---
+
 function renderEntities(entities) {
   const container = document.getElementById("entityPanel");
   if (!container) return;
-
   if (!entities || entities.length === 0) {
     container.innerHTML = "<p class=\"muted\">Nincs entitásadat ebben az időablakban.</p>";
     return;
   }
-
-  // Típusonkénti csoportosítás
   const byType = {};
   for (const ent of entities) {
     if (!byType[ent.entity_type]) byType[ent.entity_type] = [];
     byType[ent.entity_type].push(ent);
   }
-
   let html = "";
   for (const [type, items] of Object.entries(byType)) {
-    const colors = TYPE_COLORS[type] || { bg: "#1e293b", border: "#475569", label: type };
+    const c = TYPE_COLORS[type] || { bg: "#1e293b", border: "#475569", label: type };
     html += `<div class="entity-group">
-      <div class="entity-type-label" style="color:${colors.border}">${colors.label}</div>
-      <div class="entity-tags">`;
+      <div class="entity-type-label" style="color:${c.border}">${c.label}</div>
+      <div class="tag-row">`;
     for (const ent of items) {
-      const pct = Math.round(ent.avg_score * 100);
-      html += `<span class="entity-tag" style="background:${colors.bg};border-color:${colors.border}" title="${ent.count}× előfordulás, ${pct}% konfidencia">
-        ${ent.entity_text}
-        <span class="entity-count">${ent.count}</span>
+      const pct = Math.round((ent.avg_score ?? ent.score ?? 0) * 100);
+      html += `<span class="tag" style="background:${c.bg};border-color:${c.border}"
+        title="${ent.count ?? ""}× előfordulás, ${pct}% konfidencia">
+        ${ent.entity_text}${ent.count ? `<span class="tag-count">${ent.count}</span>` : ""}
       </span>`;
     }
     html += `</div></div>`;
@@ -49,14 +47,42 @@ function renderEntities(entities) {
   container.innerHTML = html;
 }
 
-async function loadTopEntities(window) {
+// --- Kulcsszó panel ---
+
+function renderKeywords(keywords) {
+  const container = document.getElementById("keywordPanel");
+  if (!container) return;
+  if (!keywords || keywords.length === 0) {
+    container.innerHTML = "<p class=\"muted\">Nincs kulcsszóadat ebben az időablakban.</p>";
+    return;
+  }
+  // Hőtérkép-szerű megjelenítés: magasabb score → erősebb kék
+  const maxScore = Math.max(...keywords.map(k => k.avg_score ?? k.score ?? 0));
+  let html = "<div class=\"tag-row\">";
+  for (const kw of keywords) {
+    const score = kw.avg_score ?? kw.score ?? 0;
+    const intensity = maxScore > 0 ? score / maxScore : 0;
+    const alpha = (0.2 + intensity * 0.6).toFixed(2);
+    const pct = Math.round(score * 100);
+    html += `<span class="tag kw-tag" style="background:rgba(59,130,246,${alpha});border-color:rgba(99,160,255,${alpha})"
+      title="${kw.count ?? ""}× előfordulás, ${pct}% relevancia">
+      ${kw.keyword}${kw.count ? `<span class="tag-count">${kw.count}</span>` : ""}
+    </span>`;
+  }
+  html += "</div>";
+  container.innerHTML = html;
+}
+
+async function loadPanels(window) {
   try {
-    const res = await fetch(`/top-entities?window=${window}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    renderEntities(data);
+    const [entRes, kwRes] = await Promise.all([
+      fetch(`/top-entities?window=${window}`),
+      fetch(`/top-keywords?window=${window}`),
+    ]);
+    if (entRes.ok) renderEntities(await entRes.json());
+    if (kwRes.ok)  renderKeywords(await kwRes.json());
   } catch (e) {
-    // Csendesen kezeljük – az entitáspanel nem kritikus
+    // Nem kritikus, csendesen kezeljük
   }
 }
 
@@ -68,17 +94,19 @@ function applyStatus(data) {
     ? `Feladat: ${currentJobId.slice(0, 8)}`
     : "Nincs aktív feladat";
 
-  const stats = data.stats || {};
-  setStat("rssCount",         stats.rss_count);
-  setStat("newCount",         stats.new_urls);
-  setStat("cacheCount",       stats.cache_hits);
-  setStat("scrapedCount",     stats.scraped_ok);
-  setStat("dupCount",         stats.duplicates_removed);
-  setStat("translationCount", stats.translation_count);
-  setStat("nerOkCount",       stats.ner_ok);
-  setStat("nerErrCount",      stats.ner_errors);
-  setStat("usedCount",        stats.used_for_summary);
-  setStat("errorCount",       stats.scrape_errors);
+  const s = data.stats || {};
+  setStat("rssCount",         s.rss_count);
+  setStat("newCount",         s.new_urls);
+  setStat("cacheCount",       s.cache_hits);
+  setStat("scrapedCount",     s.scraped_ok);
+  setStat("dupCount",         s.duplicates_removed);
+  setStat("translationCount", s.translation_count);
+  setStat("nerOkCount",       s.ner_ok);
+  setStat("nerErrCount",      s.ner_errors);
+  setStat("kwOkCount",        s.keyword_ok);
+  setStat("kwErrCount",       s.keyword_errors);
+  setStat("usedCount",        s.used_for_summary);
+  setStat("errorCount",       s.scrape_errors);
 
   document.getElementById("errorText").innerText = data.error || "";
 
@@ -89,11 +117,8 @@ function applyStatus(data) {
   if (data.stage === "done" || data.stage === "error") {
     document.getElementById("runBtn").disabled = false;
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-
-    // Entitások betöltése a job végén
     if (data.stage === "done") {
-      const windowValue = document.getElementById("window").value;
-      loadTopEntities(windowValue);
+      loadPanels(document.getElementById("window").value);
     }
   }
 }

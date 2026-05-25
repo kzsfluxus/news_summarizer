@@ -4,7 +4,9 @@ Adatbázis-réteg – SQLite.
 Táblák:
   sources          – RSS források (feeds.yaml tükre)
   articles         – Letöltött és feldolgozott cikkek
-  article_entities – NER által kinyert entitások cikkenként
+                     + relevance_score mező (2. fázis)
+  article_keywords – KeyBERT kulcsszavak cikkenként (2. fázis)
+  article_entities – GLiNER entitások cikkenként (2. fázis)
   summaries        – Időablakos Ollama összefoglalók
   jobs             – Pipeline job állapotok
 
@@ -59,11 +61,24 @@ def init_db() -> None:
                 content TEXT NOT NULL,
                 content_hu TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
-                mini_summary_hu TEXT NOT NULL
+                mini_summary_hu TEXT NOT NULL,
+                relevance_score REAL NOT NULL DEFAULT 0.0
             );
 
-            CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published);
-            CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(content_hash);
+            CREATE INDEX IF NOT EXISTS idx_articles_published  ON articles(published);
+            CREATE INDEX IF NOT EXISTS idx_articles_hash       ON articles(content_hash);
+            CREATE INDEX IF NOT EXISTS idx_articles_relevance  ON articles(relevance_score DESC);
+
+            CREATE TABLE IF NOT EXISTS article_keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+                keyword TEXT NOT NULL,
+                score REAL NOT NULL DEFAULT 0.0,
+                UNIQUE(article_id, keyword)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_keywords_article ON article_keywords(article_id);
+            CREATE INDEX IF NOT EXISTS idx_keywords_text    ON article_keywords(keyword);
 
             CREATE TABLE IF NOT EXISTS article_entities (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +115,24 @@ def init_db() -> None:
             );
             """
         )
+        # Meglévő adatbázisban is létrehozza az új oszlopot/indexet, ha még nem létezik
+        _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """
+    Inkrementális séma migráció: csak akkor futtat ALTER TABLE-t,
+    ha az adott oszlop még nem létezik. Így a meglévő adatbázis is
+    frissíthető újratelepítés nélkül.
+    """
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(articles)").fetchall()
+    }
+    if "relevance_score" not in existing:
+        conn.execute(
+            "ALTER TABLE articles ADD COLUMN relevance_score REAL NOT NULL DEFAULT 0.0"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -107,10 +140,6 @@ def init_db() -> None:
 # ---------------------------------------------------------------------------
 
 def sync_sources(feeds: list[dict]) -> None:
-    """
-    Szinkronizálja a feeds.yaml tartalmát a sources táblával.
-    Új forrást beszúr, meglévőt (name alapján) frissít.
-    """
     with get_conn() as conn:
         for feed in feeds:
             conn.execute(
@@ -151,7 +180,9 @@ def article_exists(url: str) -> bool:
 
 def hash_exists(content_hash: str) -> bool:
     with get_conn() as conn:
-        row = conn.execute("SELECT 1 FROM articles WHERE content_hash = ? LIMIT 1", (content_hash,)).fetchone()
+        row = conn.execute(
+            "SELECT 1 FROM articles WHERE content_hash = ? LIMIT 1", (content_hash,)
+        ).fetchone()
         return row is not None
 
 
@@ -184,18 +215,25 @@ def save_article(item: dict) -> None:
 def get_article_id(url: str) -> int | None:
     """Visszaadja a cikk DB-beli id-ját URL alapján."""
     with get_conn() as conn:
-        row = conn.execute("SELECT id FROM articles WHERE url = ? LIMIT 1", (url,)).fetchone()
+        row = conn.execute(
+            "SELECT id FROM articles WHERE url = ? LIMIT 1", (url,)
+        ).fetchone()
         return row["id"] if row else None
+
+
+def update_relevance_score(article_id: int, score: float) -> None:
+    """Frissíti egy cikk relevancia-pontszámát."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE articles SET relevance_score = ? WHERE id = ?",
+            (score, article_id),
+        )
 
 
 def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
     """
-    Visszaadja a cutoff_iso utáni cikkeket, a hozzájuk tartozó
-    entitáslistával együtt (entities kulcs alatt, JSON-szerű list of dict).
-
-    A published mező ISO 8601 UTC string – az összehasonlítás string-szinten
-    helyes, feltéve hogy minden bejegyzés egységesen UTC+00:00 offsettel
-    van tárolva (ahogy a feed_service garantálja).
+    Visszaadja a cutoff_iso utáni cikkeket relevancia-score szerint csökkenő
+    sorrendben, a hozzájuk tartozó kulcsszavakkal és entitásokkal együtt.
     """
     try:
         dt = datetime.fromisoformat(cutoff_iso)
@@ -211,18 +249,91 @@ def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
             SELECT *
             FROM articles
             WHERE published >= ?
-            ORDER BY published DESC
+            ORDER BY relevance_score DESC, published DESC
             LIMIT ?
             """,
             (cutoff_normalized, limit),
         ).fetchall()
         articles = [dict(row) for row in rows]
 
-    # Entitások hozzácsatolása minden cikkhez
     for article in articles:
+        article["keywords"] = get_keywords_for_article(article["id"])
         article["entities"] = get_entities_for_article(article["id"])
 
     return articles
+
+
+# ---------------------------------------------------------------------------
+# Keywords
+# ---------------------------------------------------------------------------
+
+def save_keywords(article_id: int, keywords: list[dict]) -> None:
+    """
+    Elmenti a KeyBERT által kinyert kulcsszavakat.
+
+    Args:
+        article_id: Az articles tábla id mezője.
+        keywords:   Lista dict-ekből; minden elem: {keyword, score}.
+                    Duplikátumokat (article_id, keyword) alapján kihagyja.
+    """
+    with get_conn() as conn:
+        for kw in keywords:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO article_keywords (article_id, keyword, score)
+                VALUES (?, ?, ?)
+                """,
+                (article_id, kw["keyword"], kw.get("score", 0.0)),
+            )
+
+
+def get_keywords_for_article(article_id: int) -> list[dict]:
+    """Visszaadja egy cikk kulcsszavait score szerint csökkenő sorrendben."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT keyword, score
+            FROM article_keywords
+            WHERE article_id = ?
+            ORDER BY score DESC
+            """,
+            (article_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_top_keywords_since(cutoff_iso: str, limit: int = 40) -> list[dict]:
+    """
+    Visszaadja az adott időablakban legtöbbször előforduló kulcsszavakat.
+
+    Returns:
+        Lista dict-ekből: {keyword, count, avg_score}
+    """
+    try:
+        dt = datetime.fromisoformat(cutoff_iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff_normalized = dt.astimezone(timezone.utc).isoformat()
+    except ValueError:
+        cutoff_normalized = cutoff_iso
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                ak.keyword,
+                COUNT(*) AS count,
+                AVG(ak.score) AS avg_score
+            FROM article_keywords ak
+            JOIN articles a ON a.id = ak.article_id
+            WHERE a.published >= ?
+            GROUP BY ak.keyword
+            ORDER BY count DESC, avg_score DESC
+            LIMIT ?
+            """,
+            (cutoff_normalized, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -230,14 +341,6 @@ def list_articles_since(cutoff_iso: str, limit: int = 200) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def save_entities(article_id: int, entities: list[dict]) -> None:
-    """
-    Elmenti a NER által kinyert entitásokat.
-
-    Args:
-        article_id: Az articles tábla id mezője.
-        entities:   Lista dict-ekből; minden elem: {text, type, score}.
-                    Duplikátumokat (article_id, text, type) alapján kihagyja.
-    """
     with get_conn() as conn:
         for ent in entities:
             conn.execute(
@@ -267,7 +370,6 @@ def get_entities_for_article(article_id: int) -> list[dict]:
 def get_top_entities_since(cutoff_iso: str, limit: int = 30) -> list[dict]:
     """
     Visszaadja az adott időablakban legtöbbször előforduló entitásokat.
-    Hasznos a frontend összesítő nézetéhez és a jövőbeli trendanalízishez.
 
     Returns:
         Lista dict-ekből: {entity_text, entity_type, count, avg_score}
@@ -319,8 +421,10 @@ def save_summary(window: str, content_md: str, html: str, source_count: int) -> 
 # Jobs
 # ---------------------------------------------------------------------------
 
-def upsert_job(job_id: str, stage: str, progress: int, message: str,
-               html: str, error: str, stats: str) -> None:
+def upsert_job(
+    job_id: str, stage: str, progress: int, message: str,
+    html: str, error: str, stats: str,
+) -> None:
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
@@ -348,7 +452,7 @@ def get_job(job_id: str) -> dict | None:
 
 def get_active_job() -> dict | None:
     """Visszaadja az éppen futó jobot (ha van)."""
-    running_stages = ("rss", "scrape", "ner", "markdown", "ollama", "html")
+    running_stages = ("rss", "scrape", "ner", "keywords", "relevance", "markdown", "ollama", "html")
     placeholders = ",".join("?" * len(running_stages))
     with get_conn() as conn:
         row = conn.execute(

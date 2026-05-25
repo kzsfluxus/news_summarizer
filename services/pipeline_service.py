@@ -2,20 +2,26 @@
 Fő feldolgozási pipeline.
 
 Pipeline lépések:
-  1. RSS → bejegyzések begyűjtése
-  2. URL-cache ellenőrzés
-  3. Scrape + szövegtisztítás
-  4. Tartalom-hash duplikátumszűrés
-  5. Fordítás magyarra
-  6. Extraktív mini-összefoglaló
-  7. SQLite mentés
-  8. NER – entitáskinyerés (GLiNER, content_hu mezőn)
-  9. news.md előállítása
-  10. Ollama inferencia
-  11. HTML renderelés és mentés
+  1.  RSS → bejegyzések begyűjtése
+  2.  URL-cache ellenőrzés
+  3.  Scrape + szövegtisztítás
+  4.  Tartalom-hash duplikátumszűrés
+  5.  Fordítás magyarra
+  6.  Extraktív mini-összefoglaló
+  7.  SQLite mentés
+  8.  GLiNER entitáskinyerés (content_hu)
+  9.  KeyBERT kulcsszókinyerés (content_hu)
+  10. Relevancia-score számítás (batch, az időablak összes cikkén)
+  11. news.md előállítása (relevancia szerint rendezve)
+  12. Ollama inferencia
+  13. HTML renderelés és mentés
 
-A NER (8. lépés) a mentés után fut, mert az article_id-ra van szüksége.
-Ha a NER sikertelen, a pipeline folytatódik – az entitáshiány nem fatális hiba.
+A 8-9. lépés hibája nem fatális: a pipeline folytatódik,
+az érintett cikk entitás/kulcsszó nélkül kerül az összefoglalóba.
+
+A relevancia-score (10. lépés) batch-ben fut az időablakon belüli
+összes cikken – így a source_score a cache-elt régebbi cikkeket is
+figyelembe veszi, nem csak az éppen scrape-elteket.
 """
 
 from __future__ import annotations
@@ -49,15 +55,19 @@ from services.db_service import (
     list_articles_since,
     save_article,
     save_entities,
+    save_keywords,
     save_summary,
     sync_sources,
+    update_relevance_score,
 )
 from services.feed_service import collect_recent_entries, load_feeds
 from services.html_service import markdown_to_html
 from services.job_service import JobRegistry
+from services.keyword_service import extract_keywords
 from services.markdown_service import build_news_markdown, save_markdown
 from services.ner_service import extract_entities
 from services.ollama_service import ensure_ollama, run_ollama, stop_ollama, unload_model
+from services.relevance_service import compute_and_update_batch
 from services.scrape_service import (
     ScrapeError,
     extract_main_text,
@@ -81,7 +91,7 @@ def _update(
 
 
 def _run_pipeline(job_id: str, window: str) -> None:
-    stats = {
+    stats: dict[str, Any] = {
         "rss_count": 0,
         "new_urls": 0,
         "cache_hits": 0,
@@ -92,6 +102,8 @@ def _run_pipeline(job_id: str, window: str) -> None:
         "translation_count": 0,
         "ner_ok": 0,
         "ner_errors": 0,
+        "keyword_ok": 0,
+        "keyword_errors": 0,
         "lang_stats": {},
     }
     ollama_proc = None
@@ -101,10 +113,12 @@ def _run_pipeline(job_id: str, window: str) -> None:
         feeds = load_feeds(str(FEEDS_FILE))
         sync_sources(feeds)
 
+        # 1. RSS beolvasás
         _update(job_id, "rss", 5, "RSS feedek beolvasása", stats)
         entries = collect_recent_entries(feeds, hours_back, sleep_seconds=SCRAPE_DELAY_SECONDS)
         stats["rss_count"] = len(entries)
 
+        # 2. URL-cache szűrés
         fresh_entries = []
         for entry in entries[:MAX_ENTRIES_PER_RUN]:
             if article_exists(entry["link"]):
@@ -114,19 +128,17 @@ def _run_pipeline(job_id: str, window: str) -> None:
         stats["new_urls"] = len(fresh_entries)
 
         total = max(len(fresh_entries), 1)
-        lang_counter = Counter()
+        lang_counter: Counter = Counter()
         processed = []
 
+        # 3–7. Scrape, fordítás, mentés
         for i, item in enumerate(fresh_entries, start=1):
-            pct = 10 + int((i / total) * 40)
+            pct = 10 + int((i / total) * 30)
             _update(job_id, "scrape", pct, f"Cikkek feldolgozása: {i}/{len(fresh_entries)}", stats)
 
             try:
                 text = extract_main_text(item["link"])
-            except ScrapeError:
-                stats["scrape_errors"] += 1
-                continue
-            except Exception:
+            except (ScrapeError, Exception):
                 stats["scrape_errors"] += 1
                 continue
 
@@ -157,12 +169,11 @@ def _run_pipeline(job_id: str, window: str) -> None:
 
         stats["lang_stats"] = dict(lang_counter)
 
-        # NER – a mentett cikkeken fut, article_id alapján
-        # Külön iteráció, hogy a scrape hibák ne blokkolják a NER-t
+        # 8. GLiNER entitáskinyerés
         if processed:
             ner_total = len(processed)
             for j, item in enumerate(processed, start=1):
-                pct = 50 + int((j / ner_total) * 20)
+                pct = 40 + int((j / ner_total) * 15)
                 _update(job_id, "ner", pct, f"Entitáskinyerés: {j}/{ner_total}", stats)
                 article_id = get_article_id(item["link"])
                 if article_id is None:
@@ -176,21 +187,54 @@ def _run_pipeline(job_id: str, window: str) -> None:
                 except Exception:
                     stats["ner_errors"] += 1
 
+        # 9. KeyBERT kulcsszókinyerés
+        if processed:
+            kw_total = len(processed)
+            for j, item in enumerate(processed, start=1):
+                pct = 55 + int((j / kw_total) * 15)
+                _update(job_id, "keywords", pct, f"Kulcsszókinyerés: {j}/{kw_total}", stats)
+                article_id = get_article_id(item["link"])
+                if article_id is None:
+                    stats["keyword_errors"] += 1
+                    continue
+                try:
+                    keywords = extract_keywords(item["clean_text_hu"])
+                    if keywords:
+                        save_keywords(article_id, keywords)
+                    stats["keyword_ok"] += 1
+                except Exception:
+                    stats["keyword_errors"] += 1
+
+        # 10. Relevancia-score batch számítás az időablak összes cikkén
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).isoformat()
-        context_items = list_articles_since(cutoff_iso=cutoff, limit=MAX_SUMMARY_ITEMS)
+        context_items = list_articles_since(cutoff_iso=cutoff, limit=MAX_SUMMARY_ITEMS * 3)
+
+        _update(job_id, "relevance", 72, "Relevancia-score számítása", stats)
+        scored_items = compute_and_update_batch(context_items)
+        for article in scored_items:
+            update_relevance_score(article["id"], article["relevance_score"])
+
+        # Az Ollama prompthoz a relevancia szerint rendezett top cikkek mennek
+        context_items = sorted(scored_items, key=lambda x: x["relevance_score"], reverse=True)
+        context_items = context_items[:MAX_SUMMARY_ITEMS]
         stats["used_for_summary"] = len(context_items)
 
         if not context_items:
             html = "<p>Nincs feldolgozható cikk ebben az időablakban.</p>"
             SUMMARY_HTML.write_text(html, encoding="utf-8")
-            registry.update(job_id, stage="done", progress=100, message="Nincs feldolgozható cikk", html=html, stats=stats)
+            registry.update(
+                job_id, stage="done", progress=100,
+                message="Nincs feldolgozható cikk", html=html, stats=stats,
+            )
             return
 
-        _update(job_id, "markdown", 72, "news.md előállítása", stats)
+        # 11. news.md
+        _update(job_id, "markdown", 78, "news.md előállítása", stats)
         news_markdown = build_news_markdown(context_items, window)
         save_markdown(NEWS_MD, news_markdown)
 
-        _update(job_id, "ollama", 82, "Ollama ellenőrzése / indítása", stats)
+        # 12. Ollama inferencia
+        _update(job_id, "ollama", 85, "Ollama ellenőrzése / indítása", stats)
         ollama_proc = ensure_ollama()
         prompt = build_prompt(news_markdown, window)
         summary_md = run_ollama(prompt, model=OLLAMA_MODEL, url=OLLAMA_URL)
@@ -198,21 +242,36 @@ def _run_pipeline(job_id: str, window: str) -> None:
         if not summary_md or not summary_md.strip():
             raise RuntimeError("Az Ollama üres választ adott vissza.")
 
+        # 13. HTML renderelés
         _update(job_id, "html", 95, "HTML előállítása", stats)
         html = markdown_to_html(summary_md)
         SUMMARY_HTML.write_text(html, encoding="utf-8")
         save_summary(window=window, content_md=summary_md, html=html, source_count=len(context_items))
 
-        registry.update(job_id, stage="done", progress=100, message="Kész", html=html, stats=stats)
+        registry.update(
+            job_id, stage="done", progress=100, message="Kész", html=html, stats=stats,
+        )
 
     except Exception as exc:
-        registry.update(job_id, stage="error", progress=100, message="Hiba történt", error=str(exc), stats=stats)
+        registry.update(
+            job_id, stage="error", progress=100,
+            message="Hiba történt", error=str(exc), stats=stats,
+        )
     finally:
         unload_model()
         stop_ollama(ollama_proc)
 
 
 def start_job(window: str) -> str:
+    """
+    Létrehoz egy új jobot és háttérszálban elindítja a pipeline-t.
+
+    Args:
+        window: Időablak azonosítója ("12h", "24h", "7d").
+
+    Returns:
+        Az új job UUID-je (hex string).
+    """
     job = registry.create()
     thread = Thread(target=_run_pipeline, args=(job.job_id, window), daemon=True)
     thread.start()
