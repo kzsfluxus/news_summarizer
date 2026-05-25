@@ -176,3 +176,9 @@ async function runJob() {
 }
 
 document.getElementById("runBtn").addEventListener("click", runJob);
+
+// Panelek betöltése lapbetöltéskor is, ne csak pipeline végén
+(function () {
+  const w = document.getElementById("window");
+  if (w) loadPanels(w.value);
+})();

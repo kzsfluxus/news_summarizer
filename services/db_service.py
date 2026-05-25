@@ -401,8 +401,8 @@ def search_articles(
         params.append(f"%{entity}%")
     if topic_id:
         filters.append(
-            "EXISTS (SELECT 1 FROM article_topics at "
-            "WHERE at.article_id=a.id AND at.topic_id=?)"
+            "EXISTS (SELECT 1 FROM article_topics atp "
+            "WHERE atp.article_id=a.id AND atp.topic_id=?)"
         )
         params.append(topic_id)
 
@@ -571,9 +571,9 @@ def get_topics_for_article(article_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT t.id, t.label, t.keywords, t.trend_score, at.similarity
-            FROM article_topics at JOIN topics t ON t.id=at.topic_id
-            WHERE at.article_id=? ORDER BY at.similarity DESC
+            SELECT t.id, t.label, t.keywords, t.trend_score, atp.similarity
+            FROM article_topics atp JOIN topics t ON t.id=atp.topic_id
+            WHERE atp.article_id=? ORDER BY atp.similarity DESC
             """,
             (article_id,),
         ).fetchall()
@@ -596,9 +596,9 @@ def get_topics_since(cutoff_iso: str) -> list[dict]:
         for topic in topics:
             rows = conn.execute(
                 """
-                SELECT a.id, a.title, a.source, a.published, at.similarity
-                FROM article_topics at JOIN articles a ON a.id=at.article_id
-                WHERE at.topic_id=? ORDER BY at.similarity DESC LIMIT 5
+                SELECT a.id, a.title, a.source, a.published, atp.similarity
+                FROM article_topics atp JOIN articles a ON a.id=atp.article_id
+                WHERE atp.topic_id=? ORDER BY atp.similarity DESC LIMIT 5
                 """,
                 (topic["id"],),
             ).fetchall()
@@ -616,9 +616,9 @@ def get_topic_by_id(topic_id: int) -> dict | None:
         rows = conn.execute(
             """
             SELECT a.id, a.title, a.source, a.published, a.url,
-                   a.mini_summary_hu, a.relevance_score, at.similarity
-            FROM article_topics at JOIN articles a ON a.id=at.article_id
-            WHERE at.topic_id=? ORDER BY at.similarity DESC
+                   a.mini_summary_hu, a.relevance_score, atp.similarity
+            FROM article_topics atp JOIN articles a ON a.id=atp.article_id
+            WHERE atp.topic_id=? ORDER BY atp.similarity DESC
             """,
             (topic_id,),
         ).fetchall()
