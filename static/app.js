@@ -97,9 +97,9 @@ function renderTopics(topics) {
 async function loadPanels(window) {
   try {
     const [entRes, kwRes, topRes] = await Promise.all([
-      fetch(`/top-entities?window=${window}`),
-      fetch(`/top-keywords?window=${window}`),
-      fetch(`/topics?window=${window}`),
+      fetch(`/api/top-entities?window=${window}`),
+      fetch(`/api/top-keywords?window=${window}`),
+      fetch(`/api/topics?window=${window}`),
     ]);
     if (entRes.ok) renderEntities(await entRes.json());
     if (kwRes.ok)  renderKeywords(await kwRes.json());

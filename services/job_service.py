@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from services.db_service import get_active_job, get_job, upsert_job
 
-RUNNING_STAGES = {"rss", "scrape", "markdown", "ollama", "html"}
+RUNNING_STAGES = {"rss", "scrape", "ner", "keywords", "relevance", "topics", "markdown", "ollama", "html"}
 
 
 @dataclass
