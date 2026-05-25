@@ -1,7 +1,7 @@
 """
 Entitáskinyerés GLiNER segítségével.
 
-Modell: enyaml/gliner-multi-v2.1
+Modell: urchade/gliner_multi-v2.1
   – Többnyelvű zero-shot NER modell (~400 MB)
   – Futtatható CPU-n is, de GPU-val lényegesen gyorsabb
   – Első indításkor letölti a Hugging Face hub-ról; utána cache-eli
@@ -66,8 +66,8 @@ def _load_model():
             "A gliner csomag hiányzik. Telepítsd: pip install gliner"
         ) from e
 
-    logger.info("GLiNER modell betöltése: enyaml/gliner-multi-v2.1")
-    model = GLiNER.from_pretrained("enyaml/gliner-multi-v2.1")
+    logger.info("GLiNER modell betöltése: urchade/gliner_multi-v2.1")
+    model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
     logger.info("GLiNER modell betöltve.")
     return model
 
@@ -134,7 +134,9 @@ def extract_entities(text: str) -> list[dict[str, Any]]:
     try:
         model = _load_model()
     except Exception as exc:
-        logger.error("GLiNER modell betöltési hiba: %s", exc)
+        logger.error("GLiNER modell betöltési hiba: %s – "
+                     "Ellenőrizd, hogy a .venv-ben fut-e az alkalmazás "
+                     "(.venv/bin/python app.py)", exc)
         return []
 
     chunks = _chunk_text(text)
@@ -161,8 +163,8 @@ def extract_entities(text: str) -> list[dict[str, Any]]:
                 best[key] = score
 
     result = [
-        {"text": text, "type": etype, "score": score}
-        for (text, etype), score in best.items()
+        {"text": ent_text, "type": ent_type, "score": ent_score}
+        for (ent_text, ent_type), ent_score in best.items()
     ]
     result.sort(key=lambda x: x["score"], reverse=True)
     return result

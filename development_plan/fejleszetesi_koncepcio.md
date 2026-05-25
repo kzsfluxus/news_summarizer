@@ -73,7 +73,7 @@ PostgreSQL migráció az 5. fázisban, intézményi igény esetén.
 KeyBERT + paraphrase-multilingual-MiniLM-L12-v2 (~120 MB) · MMR · max 10 kulcsszó/cikk
 
 ### 5.2. Entitáskinyerés ✅
-GLiNER + enyaml/gliner-multi-v2.1 (~400 MB) · PERSON, ORG, LOCATION, EVENT, PRODUCT
+GLiNER + urchade/gliner_multi-v2.1 (~400 MB) · PERSON, ORG, LOCATION, EVENT, PRODUCT
 
 ### 5.3. Relevancia-score ✅
 Forrásszám (35%) + Frissesség (25%) + Entitássúly (25%) + Kulcsszósúly (15%)

@@ -59,7 +59,7 @@ a Hugging Face hub-ról (internet-hozzáférés szükséges):
 
 | Csomag | Modell | Méret | Feladat |
 |---|---|---|---|
-| `gliner` | `enyaml/gliner-multi-v2.1` | ~400 MB | NER entitáskinyerés |
+| `gliner` | `urchade/gliner_multi-v2.1` | ~400 MB | NER entitáskinyerés |
 | `sentence-transformers` | `paraphrase-multilingual-MiniLM-L12-v2` | ~120 MB | KeyBERT kulcsszavazás |
 
 A TF-IDF témamodellezés és az FTS5 keresés offline, külön modell nélkül működik.
