@@ -1,7 +1,21 @@
+"""
+Markdown → HTML konverzió az összefoglaló megjelenítéséhez.
+
+A `markdown_to_html` függvény az Ollama által generált Markdown szöveget
+önálló HTML oldallá alakítja, amelyet a frontend iframe-ben jelenít meg.
+
+Biztonsági megjegyzések:
+- `html: False` – raw HTML blokkok nem kerülnek a kimenetbe (XSS-védelem)
+- `linkify: True` – bare URL-ek automatikusan linkké válnak
+- A CSS változókon (CSS custom properties) alapul; sötét téma (dark mode)
+"""
+
 from __future__ import annotations
 
 from markdown_it import MarkdownIt
 
+# Az összefoglaló önálló HTML oldala; az __BODY__ placeholder helyére
+# kerül a renderelt Markdown tartalom.
 HTML_TEMPLATE = """<!doctype html>
 <html lang="hu">
 <head>
@@ -52,6 +66,15 @@ HTML_TEMPLATE = """<!doctype html>
 
 
 def markdown_to_html(md_text: str) -> str:
+    """
+    Markdown szöveget teljes HTML oldallá alakít.
+
+    Args:
+        md_text: Az Ollama által generált Markdown összefoglaló.
+
+    Returns:
+        Önálló HTML oldal string, beágyazott CSS-sel.
+    """
     md = MarkdownIt("commonmark", {"html": False, "linkify": True, "typographer": True})
     body = md.render(md_text)
     return HTML_TEMPLATE.replace("__BODY__", body)

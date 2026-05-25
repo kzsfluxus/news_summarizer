@@ -1,3 +1,24 @@
+"""
+Fő feldolgozási pipeline.
+
+A `start_job` függvény háttérszálban indítja el a `_run_pipeline` függvényt,
+amely a következő lépéseket végzi el:
+
+  1. RSS → bejegyzések begyűjtése
+  2. URL-cache ellenőrzés (már feldolgozott cikkek kihagyása)
+  3. Cikkek scrape-elése és szövegtisztítása
+  4. Tartalom-hash alapú duplikátumszűrés
+  5. Fordítás magyarra (nem-hu cikkek esetén)
+  6. Extraktív mini-összefoglaló generálása
+  7. SQLite mentés
+  8. news.md előállítása az Ollama számára
+  9. Ollama inferencia (összefoglaló generálás)
+  10. HTML renderelés és mentés
+
+A job állapota a `JobRegistry`-n keresztül folyamatosan frissül,
+és a frontend 1,2 másodpercenként lekérdezi a /status/<job_id> végponton.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -35,17 +56,38 @@ from services.html_service import markdown_to_html
 from services.job_service import JobRegistry
 from services.markdown_service import build_news_markdown, save_markdown
 from services.ollama_service import ensure_ollama, run_ollama, stop_ollama, unload_model
-from services.scrape_service import ScrapeError, extract_main_text, extractive_mini_summary, fingerprint_text, shorten_for_context
+from services.scrape_service import (
+    ScrapeError,
+    extract_main_text,
+    extractive_mini_summary,
+    fingerprint_text,
+    shorten_for_context,
+)
 from services.translate_service import maybe_translate
 
+# Modul-szintű registry: az app.py és a pipeline ugyanezt a példányt használja
 registry = JobRegistry()
 
 
-def _update(job_id: str, stage: str, progress: int, message: str, stats: dict[str, Any] | None = None) -> None:
+def _update(
+    job_id: str,
+    stage: str,
+    progress: int,
+    message: str,
+    stats: dict[str, Any] | None = None,
+) -> None:
+    """Rövid segédfüggvény a job állapotának frissítéséhez."""
     registry.update(job_id, stage=stage, progress=progress, message=message, stats=stats or {})
 
 
 def _run_pipeline(job_id: str, window: str) -> None:
+    """
+    A teljes feldolgozási pipeline; háttérszálban fut.
+
+    Hibakezelés: minden kivétel elkapódik, a job `error` státuszba kerül,
+    és a részletek az `error` mezőben megjelennek a frontenden.
+    A `finally` blokk mindig lefut: modell kirakása és Ollama leállítása.
+    """
     stats = {
         "rss_count": 0,
         "new_urls": 0,
@@ -63,13 +105,14 @@ def _run_pipeline(job_id: str, window: str) -> None:
         hours_back = WINDOWS.get(window, 24)
         feeds = load_feeds(str(FEEDS_FILE))
 
-        # Forrásokat szinkronizáljuk a DB-be
+        # Forrásokat szinkronizáljuk a DB-be (upsert: új forrás bekerül, meglévő frissül)
         sync_sources(feeds)
 
         _update(job_id, "rss", 5, "RSS feedek beolvasása", stats)
         entries = collect_recent_entries(feeds, hours_back, sleep_seconds=SCRAPE_DELAY_SECONDS)
         stats["rss_count"] = len(entries)
 
+        # URL-cache szűrés: már feldolgozott cikkeket kihagyjuk
         fresh_entries = []
         for entry in entries[:MAX_ENTRIES_PER_RUN]:
             if article_exists(entry["link"]):
@@ -80,6 +123,8 @@ def _run_pipeline(job_id: str, window: str) -> None:
 
         total = max(len(fresh_entries), 1)
         lang_counter = Counter()
+        # Megjegyzés: a `processed` lista jelenleg nincs felhasználva a pipeline
+        # további lépéseiben – jövőbeli felhasználásra (pl. per-run riport) fenntartva.
         processed = []
 
         for i, item in enumerate(fresh_entries, start=1):
@@ -120,6 +165,8 @@ def _run_pipeline(job_id: str, window: str) -> None:
 
         stats["lang_stats"] = dict(lang_counter)
 
+        # Az összefoglalóhoz az időablakon belüli összes DB-beli cikket használjuk,
+        # nem csak az éppen scrape-elt újakat – így a cache-elt korábbi cikkek is bekerülnek
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).isoformat()
         context_items = list_articles_since(cutoff_iso=cutoff, limit=MAX_SUMMARY_ITEMS)
         stats["used_for_summary"] = len(context_items)
@@ -156,6 +203,15 @@ def _run_pipeline(job_id: str, window: str) -> None:
 
 
 def start_job(window: str) -> str:
+    """
+    Létrehoz egy új jobot és háttérszálban elindítja a pipeline-t.
+
+    Args:
+        window: Időablak azonosítója ("12h", "24h", "7d").
+
+    Returns:
+        Az új job UUID-je (hex string).
+    """
     job = registry.create()
     thread = Thread(target=_run_pipeline, args=(job.job_id, window), daemon=True)
     thread.start()

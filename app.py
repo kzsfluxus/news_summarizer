@@ -1,3 +1,16 @@
+"""
+Flask alkalmazás belépési pontja.
+
+Végpontok:
+  GET  /              – Főoldal (index.html)
+  POST /run           – Új pipeline job indítása; ha már fut egy job,
+                        visszaadja annak ID-ját (already_running: true)
+  GET  /status/<id>   – Job állapotának lekérdezése (stage, progress, stats, html)
+
+A pipeline háttérszálban fut; az állapot SQLite-ban tárolódik és
+a frontend 1,2 másodpercenként lekérdezi.
+"""
+
 from __future__ import annotations
 
 from flask import Flask, jsonify, render_template, request
