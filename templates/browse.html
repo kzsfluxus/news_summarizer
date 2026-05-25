@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Témák – Hírösszefoglaló{% endblock %}
+{% block head %}
+<style>
+  .window-tabs{display:flex;gap:.5rem;margin-bottom:1.2rem}
+  .topic-card{background:var(--card2);border:1px solid var(--border);
+              border-radius:14px;padding:1.1rem 1.2rem;margin-bottom:.9rem}
+  .topic-header{display:flex;justify-content:space-between;
+                align-items:flex-start;margin-bottom:.4rem}
+  .topic-label{font-size:1rem;font-weight:600;color:#f1f5f9}
+  .topic-meta{font-size:.78rem;color:var(--muted);white-space:nowrap;margin-left:.5rem}
+  .topic-kw{font-size:.8rem;color:var(--muted);margin-bottom:.7rem}
+  .trend-bar{height:5px;border-radius:999px;background:var(--card);
+             border:1px solid var(--border);margin-bottom:.75rem;overflow:hidden}
+  .trend-fill{height:100%;border-radius:999px;
+              background:linear-gradient(90deg,#22c55e,#3b82f6)}
+  .art-list{list-style:none;padding:0}
+  .art-list li{font-size:.85rem;padding:.3rem 0;border-bottom:1px solid var(--border)}
+  .art-list li:last-child{border-bottom:none}
+  .art-source{color:var(--muted);font-size:.78rem}
+  .no-topics{color:var(--muted);padding:3rem 0;text-align:center}
+</style>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Témaböngésző</h1>
+  <p class="muted">TF-IDF klaszterek – témák trend szerint rendezve.</p>
+  <div class="window-tabs" style="margin-top:.75rem">
+    {% for w in windows %}
+    <a href="/browse?window={{ w }}"
+       class="btn {% if window==w %}btn-primary{% endif %}">{{ w }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if topics %}
+{% set max_trend = topics[0].trend_score if topics else 1 %}
+{% for topic in topics %}
+<div class="topic-card" id="topic-{{ topic.id }}">
+  <div class="topic-header">
+    <span class="topic-label">{{ topic.label }}</span>
+    <span class="topic-meta">
+      {{ topic.article_count }} cikk ·
+      trend {{ ((topic.trend_score / max_trend) * 100) | int }}%
+    </span>
+  </div>
+  <div class="topic-kw">{{ topic.keywords }}</div>
+  <div class="trend-bar">
+    <div class="trend-fill"
+         style="width:{{ ((topic.trend_score / max_trend) * 100) | int }}%"></div>
+  </div>
+  {% if topic.top_articles %}
+  <ul class="art-list">
+    {% for a in topic.top_articles %}
+    <li>
+      <a href="/article/{{ a.id }}">{{ a.title }}</a>
+      <span class="art-source"> · {{ a.source }} · {{ a.published[:10] if a.published else '' }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <div style="margin-top:.65rem">
+    <a href="/search?topic_id={{ topic.id }}" class="muted" style="font-size:.8rem">
+      Összes cikk ebben a témában →
+    </a>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="no-topics">
+  Nincs témaadát ebben az időablakban.<br>
+  Futtass egy pipeline-t a főoldalon.
+</div>
+{% endif %}
+{% endblock %}

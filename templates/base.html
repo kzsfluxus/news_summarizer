@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Hírösszefoglaló{% endblock %}</title>
+  <style>
+    :root{
+      --bg:#0f172a;--card:#111827;--card2:#1e293b;
+      --text:#e5e7eb;--muted:#94a3b8;--border:#334155;
+      --green:#22c55e;--blue:#3b82f6;--warn:#f59e0b;--red:#ef4444;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Inter,system-ui,sans-serif;background:var(--bg);
+         color:var(--text);line-height:1.6;min-height:100vh}
+    a{color:var(--blue);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .container{max-width:1200px;margin:0 auto;padding:0 1rem 3rem}
+    nav{background:var(--card);border-bottom:1px solid var(--border);
+        padding:.7rem 1rem;display:flex;gap:1.5rem;align-items:center;
+        position:sticky;top:0;z-index:100}
+    nav .brand{font-weight:700;color:#f8fafc;font-size:1rem}
+    nav a{color:var(--muted);font-size:.9rem;transition:color .15s}
+    nav a:hover,nav a.active{color:#f8fafc;text-decoration:none}
+    .card{background:var(--card);border:1px solid var(--border);
+          border-radius:16px;padding:1.2rem 1.4rem;
+          box-shadow:0 8px 24px rgba(0,0,0,.2);margin-bottom:1rem}
+    h1{font-size:1.4rem;font-weight:700;margin-bottom:.3rem}
+    h2{font-size:1.05rem;font-weight:600;margin-bottom:.65rem}
+    h3{font-size:.95rem;font-weight:600}
+    .muted{color:var(--muted);font-size:.88rem}
+    .badge{display:inline-block;padding:.15rem .5rem;border-radius:999px;
+           font-size:.75rem;font-weight:600}
+    .tag-row{display:flex;flex-wrap:wrap;gap:.3rem}
+    .tag{display:inline-flex;align-items:center;gap:.22rem;padding:.18rem .5rem;
+         border-radius:999px;border:1px solid;font-size:.8rem}
+    mark{background:#854d0e;color:#fef3c7;border-radius:3px;padding:0 2px}
+    .btn{display:inline-block;padding:.5rem 1rem;border-radius:10px;
+         border:1px solid var(--border);background:var(--card2);
+         color:var(--text);cursor:pointer;font-size:.9rem;transition:opacity .15s}
+    .btn:hover{opacity:.85;text-decoration:none}
+    .btn-primary{background:#1d4ed8;border-color:#2563eb;color:#fff}
+    input,select{font-size:.9rem;padding:.5rem .75rem;border-radius:8px;
+                 border:1px solid var(--border);background:var(--card2);
+                 color:var(--text);width:100%}
+    input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<nav>
+  <span class="brand">📰 Hírösszefoglaló</span>
+  <a href="/" {% if request.path=='/' %}class="active"{% endif %}>Főoldal</a>
+  <a href="/search" {% if request.path=='/search' %}class="active"{% endif %}>Keresés</a>
+  <a href="/browse" {% if request.path=='/browse' %}class="active"{% endif %}>Témák</a>
+  <a href="/newsletter" target="_blank">Hírlevél</a>
+  <a href="/admin" {% if request.path=='/admin' %}class="active"{% endif %}
+     style="margin-left:auto;font-size:.8rem;color:#64748b">Admin</a>
+</nav>
+<div class="container" style="padding-top:1.2rem">
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

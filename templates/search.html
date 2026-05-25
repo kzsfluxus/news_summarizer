@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Keresés – Hírösszefoglaló{% endblock %}
+{% block head %}
+<style>
+  .search-form{display:grid;grid-template-columns:1fr auto;gap:.6rem;margin-bottom:1rem}
+  .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.6rem;margin-bottom:1rem}
+  .result-card{background:var(--card2);border:1px solid var(--border);
+               border-radius:12px;padding:1rem 1.1rem;margin-bottom:.7rem}
+  .result-meta{font-size:.8rem;color:var(--muted);margin:.25rem 0 .5rem}
+  .result-snippet{font-size:.88rem;color:#cbd5e1;line-height:1.55}
+  .result-score{font-size:.75rem;color:#64748b;margin-top:.4rem}
+  .pagination{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:1rem}
+  .page-btn{padding:.3rem .7rem;border-radius:8px;border:1px solid var(--border);
+            background:var(--card2);color:var(--text);font-size:.85rem}
+  .page-btn.active{background:#1d4ed8;border-color:#2563eb}
+  .no-results{color:var(--muted);padding:2rem 0;text-align:center}
+</style>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Keresés</h1>
+  <form method="get" action="/search">
+    <div class="search-form">
+      <input name="q" value="{{ q }}" placeholder="Keresési kifejezés…" autofocus>
+      <button type="submit" class="btn btn-primary">Keresés</button>
+    </div>
+    <div class="filters">
+      <select name="source">
+        <option value="">Összes forrás</option>
+        {% for s in sources %}
+        <option value="{{ s.name }}" {% if source==s.name %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="date" name="from" value="{{ date_from or '' }}" title="Dátumtól">
+      <input type="date" name="to"   value="{{ date_to   or '' }}" title="Dátumig">
+      <select name="entity">
+        <option value="">Összes entitás</option>
+        {% for e in entities %}
+        <option value="{{ e.entity_text }}"
+          {% if entity==e.entity_text %}selected{% endif %}>
+          {{ e.entity_text }} ({{ e.count }})
+        </option>
+        {% endfor %}
+      </select>
+      <select name="topic_id">
+        <option value="">Összes téma</option>
+        {% for t in topics %}
+        <option value="{{ t.id }}" {% if topic_id==t.id %}selected{% endif %}>
+          {{ t.label }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+</div>
+
+{% if q %}
+  {% if results and results.total > 0 %}
+  <p class="muted" style="margin-bottom:.75rem">
+    {{ results.total }} találat „{{ q }}" kifejezésre
+    ({{ results.page }}. oldal / {{ results.pages }})
+  </p>
+  {% for r in results.results %}
+  <div class="result-card">
+    <a href="/article/{{ r.id }}" style="font-weight:600;font-size:1rem;color:#f1f5f9">
+      {{ r.title }}
+    </a>
+    <div class="result-meta">{{ r.source }} · {{ r.published }}</div>
+    <div class="result-snippet">{{ r.snippet | safe }}</div>
+    <div class="result-score">
+      Relevancia: {{ (r.relevance_score * 100) | int }}%
+      <a href="{{ r.url }}" target="_blank" style="margin-left:.75rem;font-size:.75rem">
+        Eredeti cikk ↗
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if results.pages > 1 %}
+  <div class="pagination">
+    {% for p in range(1, results.pages + 1) %}
+    <a href="?q={{ q }}&page={{ p }}{% if source %}&source={{ source }}{% endif %}{% if date_from %}&from={{ date_from }}{% endif %}{% if date_to %}&to={{ date_to }}{% endif %}{% if entity %}&entity={{ entity }}{% endif %}{% if topic_id %}&topic_id={{ topic_id }}{% endif %}"
+       class="page-btn {% if p == results.page %}active{% endif %}">{{ p }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="no-results">Nincs találat „{{ q }}" kifejezésre.</div>
+  {% endif %}
+{% endif %}
+{% endblock %}

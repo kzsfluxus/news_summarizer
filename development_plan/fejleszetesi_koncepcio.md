@@ -4,36 +4,29 @@
 
 A rendszer egy RSS-alapú hírgyűjtő és összefoglaló eszköz, amely különböző forrásokból
 cikkeket gyűjt, feldolgoz, majd magyar nyelvű összefoglalót készít belőlük lokális
-Ollama inferenciával.
-
-A fejlesztés célja egy komplexebb, többfunkciós platform kialakítása, amely:
-
-* többnyelvű forrásokat kezel és fordít
-* NLP-alapú entitáskinyerést, kulcsszavazást, témamodellezést és relevancia-rankingot végez
-* kereshető adatbázist épít
-* webes felületen teszi elérhetővé az információt
-* automatizált hírlevelet generál
+Ollama inferenciával. A rendszer NLP-alapú entitáskinyerést, kulcsszavazást,
+témamodellezést, relevancia-rankingot, teljes szöveges keresést és hírlevél-generálást
+végez, teljes egészében lokálisan, internet-hozzáférés nélkül is működőképesen
+(az első modelltöltés után).
 
 ---
 
 ## 2. Fejlesztési alapelvek
 
-A rendszer fejlesztése modulárisan, egymásra épülő rétegekben történik:
+Moduláris, egymásra épülő rétegek:
 
-1. stabil adatgyűjtés és tárolás
-2. gazdagított metaadatok és NLP-alapú feldolgozás
-3. tematikus szervezés és hírlevél
-4. keresés és webes felület bővítés
-5. intézményi funkciók
+1. Stabil adatgyűjtés és tárolás
+2. NLP-alapú metaadat-gazdagítás
+3. Tematikus szervezés és hírlevél
+4. Keresés és webes felület
+5. Intézményi funkciók
 
 ---
 
-## 3. Adatmodell (SQLite, jövőben PostgreSQL)
-
-A rendszer SQLite-on fut. PostgreSQL migráció az 5. fázisban, intézményi igény esetén.
+## 3. Adatmodell (SQLite)
 
 ### 3.1. sources ✅
-RSS források metaadatai. Pipeline indulásakor szinkronizálódik a `feeds.yaml`-ból.
+RSS források (name, lang, country, category, rss_url). Pipeline indulásakor szinkronizálódik.
 
 ### 3.2. articles ✅
 Feldolgozott cikkek: url, title, source, lang, country, category, published,
@@ -43,7 +36,7 @@ scraped_at, content, content_hu, content_hash, mini_summary_hu, relevance_score.
 KeyBERT kulcsszavak: article_id, keyword, score.
 
 ### 3.4. article_entities ✅
-GLiNER entitások: article_id, entity_text, entity_type (PERSON/ORG/LOCATION/EVENT/PRODUCT), score.
+GLiNER entitások: article_id, entity_text, entity_type, score.
 
 ### 3.5. topics ✅
 TF-IDF klaszterek: window, created_at, label, keywords, article_count, trend_score.
@@ -51,137 +44,136 @@ TF-IDF klaszterek: window, created_at, label, keywords, article_count, trend_sco
 ### 3.6. article_topics ✅
 Cikk–téma kapcsolatok: article_id, topic_id, similarity.
 
-### 3.7. summaries ✅
-Időablakos Ollama összefoglalók: window, created_at, content_md, html, source_count.
+### 3.7. articles_fts ✅
+FTS5 virtuális tábla: title, mini_summary_hu, content_hu indexelve.
+INSERT/UPDATE/DELETE triggerekkel szinkronizálva az articles táblával.
 
-### 3.8. jobs ✅
-Pipeline job állapotok: job_id, stage, progress, message, html, error, stats, timestamps.
+### 3.8. summaries ✅
+Időablakos Ollama összefoglalók.
+
+### 3.9. jobs ✅
+Pipeline job állapotok.
+
+PostgreSQL migráció az 5. fázisban, intézményi igény esetén.
 
 ---
 
 ## 4. Feldolgozási pipeline ✅
 
-### 4.1. Ingest ✅
-RSS feldolgozás · URL-cache · scrape · duplikátumszűrés · fordítás · mini-összefoglaló · mentés
-
-### 4.2. NLP feldolgozás ✅
-GLiNER entitáskinyerés · KeyBERT kulcsszókinyerés · relevancia-score batch számítás
-
-### 4.3. Témamodellezés ✅
-TF-IDF + cosine similarity klaszterezés · trend-score számítás · cikk–téma hozzárendelés
-
-### 4.4. Kimenet ✅
-Hírlevél HTML generálása · news.md előállítása · Ollama inferencia · HTML renderelés
+1. RSS beolvasás · 2. URL-cache · 3. Scrape · 4. Duplikátumszűrés ·
+5. Fordítás · 6. Mini-összefoglaló · 7. Mentés (FTS5 trigger) ·
+8. GLiNER NER · 9. KeyBERT kulcsszavak · 10. Relevancia-score ·
+11. TF-IDF témamodellezés · 12. Hírlevél · 13. news.md · 14. Ollama · 15. HTML
 
 ---
 
-## 5. NLP réteg
+## 5. NLP réteg ✅
 
 ### 5.1. Kulcsszókinyerés ✅
-* Modell: `paraphrase-multilingual-MiniLM-L12-v2` (KeyBERT, ~120 MB)
-* Módszer: Max Marginal Relevance – relevancia és diverzitás egyensúlya
-* Cikkenként max 10 kulcsszó, 0.2 score küszöb felett
-* Frontend: intenzitás-alapú kék hőtérkép panel
+KeyBERT + paraphrase-multilingual-MiniLM-L12-v2 (~120 MB) · MMR · max 10 kulcsszó/cikk
 
 ### 5.2. Entitáskinyerés ✅
-* Modell: `enyaml/gliner-multi-v2.1` (GLiNER, ~400 MB)
-* Típusok: PERSON, ORG, LOCATION, EVENT, PRODUCT
-* Szöveg: content_hu, 1500 karakteres ablakokban
-* Frontend: típusonként csoportosított badge nézet
+GLiNER + enyaml/gliner-multi-v2.1 (~400 MB) · PERSON, ORG, LOCATION, EVENT, PRODUCT
 
 ### 5.3. Relevancia-score ✅
-
-| Összetevő | Súly | Módszer |
-|---|---|---|
-| Forrásszám | 35% | Kulcsszó-átfedés alapú forrásszámlálás |
-| Frissesség | 25% | Exponenciális bomlás, 12 h felezési idő |
-| Entitássúly | 25% | tanh(count/5) × átlagos konfidencia |
-| Kulcsszósúly | 15% | Top-5 kulcsszó átlagos relevancia-értéke |
+Forrásszám (35%) + Frissesség (25%) + Entitássúly (25%) + Kulcsszósúly (15%)
 
 ### 5.4. Témamodellezés ✅
-* Módszer: TF-IDF vektorizálás + cosine similarity, mohó agglomeratív klaszterezés
-* Bemenet: mini_summary_hu + kulcsszavak
-* Hasonlósági küszöb: 0.25 · Minimális klaszterméret: 2 cikk
-* Téma-felirat: összesített TF-IDF top 4 term
-* Trend-score: `átlagos relevancia × log(klaszterméret + 1)`
-* Frontend: témapanel cikkcímekkel és trend-score-ral
-* Korlát: nem szemantikus – hasonló értelmű, eltérő szavú cikkek különválhatnak
+TF-IDF + cosine similarity · mohó agglomeratív klaszterezés ·
+trend-score = átlagos relevancia × log(klaszterméret + 1) ·
+korlát: szóalak-alapú, nem szemantikus
 
 ---
 
-## 6. Hírlevél ✅
+## 6. Keresőmotor ✅
 
-Automatikus HTML kimenet (`output/newsletter.html`):
-* Témák szerint szervezett szerkezet
-* Cikkenként: cím (link), forrás, dátum, mini-összefoglaló, kulcsszó-badge-ek, relevancia %
-* Trend-score és cikkszám téma-fejlécben
-* Inline CSS az e-mail kliens kompatibilitásért
-* Elérhető a `/newsletter` végponton
+### 6.1. FTS5 teljes szöveges keresés ✅
+* Virtuális tábla: `articles_fts` (title, mini_summary_hu, content_hu)
+* Tokenizáció: unicode61 (diakritikus karaktereket kezel)
+* Rangsorolás: BM25 (beépített FTS5 függvény)
+* Szűrők: forrás, dátum intervallum, entitás, téma ID
+* Snippet generálás: keresési kifejezés kiemelése `<mark>` tagekkel
+* Lapozás: oldalméretes eredmény, oldalszám navigációval
+* Meglévő DB automatikus FTS újraindexelése első indításkor
+
+### 6.2. Keresési API ✅
+`GET /api/search?q=…&source=…&from=…&to=…&entity=…&topic_id=…&page=…`
 
 ---
 
-## 7. Keresőmotor és webes felület
+## 7. Webes felület ✅
 
-### 7.1. Webes felület aktuális állapota ✅
-* Pipeline indítás, időablak-választó, hírlevél link
-* Progress bar 15 lépéses pipeline-hoz
-* Statisztikai panel (13 mutató)
-* Entitáspanel · Kulcsszópanel · Témapanel
-* Összefoglaló iframe
+### 7.1. Főoldal (`/`) ✅
+Pipeline indítás · időablak választó · progress bar · statisztikai panel ·
+entitás-, kulcsszó-, témapanel · összefoglaló iframe · hírlevél link
 
-### 7.2. Tervezett bővítések *(4. fázis)*
-* Teljes szöveges keresés (SQLite FTS5)
-* Cikkoldal (szöveg, entitások, kulcsszavak, téma, relevancia)
-* Témaböngésző időbeli trenddel
-* Admin felület
+### 7.2. Keresőoldal (`/search`) ✅
+FTS5 keresés · szűrősor (forrás, dátum, entitás, téma) ·
+snippet kiemelés · lapozás · találatszám
+
+### 7.3. Cikkoldal (`/article/<id>`) ✅
+Teljes magyar szöveg (összecsukható) · entitások (kattintható keresőlink) ·
+kulcsszavak (kattintható keresőlink) · relevancia-score + összetevők ·
+téma-badge-ek (böngészőre mutató link)
+
+### 7.4. Témaböngésző (`/browse`) ✅
+TF-IDF klaszterek trend szerint · trend-bar vizualizáció ·
+ablak-választó (12h/24h/7d) · cikklinkek · keresőre mutató link
+
+### 7.5. Admin panel (`/admin`) ✅
+DB statisztikák · RSS források listája · job előzmények (20 legutóbbi)
+
+### 7.6. Navigáció ✅
+Közös `base.html` alapsablon · sticky navigációs sáv minden oldalon ·
+404 hibaoldal
 
 ---
 
 ## 8. Fejlesztési fázisok
 
 ### Fázis 1 – Adatmodell és infrastruktúra ✅
-sources + jobs DB perzisztencia · bugfixek · PostgreSQL migráció halasztva
+sources + jobs DB · bugfixek · PostgreSQL migráció halasztva
 
 ### Fázis 2 – NLP réteg ✅
-GLiNER entitáskinyerés · KeyBERT kulcsszókinyerés · relevancia-score · frontend panelek
+GLiNER · KeyBERT · relevancia-score · frontend panelek
 
 ### Fázis 3 – Témamodellezés és hírlevél ✅
-TF-IDF + cosine similarity klaszterezés · trend-score · cikk–téma kapcsolatok ·
-automatikus hírlevél HTML · témapanel a frontenden
+TF-IDF klaszterezés · trend-score · hírlevél HTML · témapanel
 
-### Fázis 4 – Keresőmotor és webes UI bővítés
-* Teljes szöveges keresés (SQLite FTS5)
-* Cikkoldal, témaböngésző, admin felület
+### Fázis 4 – Keresőmotor és webes UI ✅
+FTS5 teljes szöveges keresés · keresőoldal · cikkoldal ·
+témaböngésző · admin panel · közös navigáció
 
 ### Fázis 5 – Intézményi funkciók
-* Felhasználói fiókok, mentett keresések, értesítések
-* PostgreSQL migráció (ha szükséges)
-* Automatizált riportok és ütemezett futtatás
+* Felhasználói fiókok, mentett keresések, e-mail értesítések
+* Ütemezett automatikus futtatás (cron / APScheduler)
+* PostgreSQL migráció (FTS5 → tsvector, ha szükséges)
+* Automatizált riportok exportálása (PDF, DOCX)
 
 ---
 
 ## 9. Könyvtári alkalmazhatóság
 
-A rendszer jól illeszkedik szakkönyvtári felhasználásra:
-
-* többnyelvű forrásokat kezel és fordít
-* entitáskinyeréssel és kulcsszavazással támogatja a tematikus feltárást
-* témamodellezés segíti a cikkcsoportok azonosítását
-* relevancia-ranking kiemeli a fontos híreket
-* automatikus hírlevél-generálás támogatja a médiakövetési riportokat
-* kereshető tudásbázist épít (4. fázistól)
+* Többnyelvű forráskezelés és fordítás
+* Entitáskinyerés és kulcsszavazás a tematikus feltáráshoz
+* Témamodellezés a cikkcsoportok azonosításához
+* Teljes szöveges keresés a tudásbázisban
+* Relevancia-ranking a fontos hírek kiemelésére
+* Automatikus hírlevél médiakövetési riportokhoz
+* Cikkoldal részletes metaadatokkal
 
 ---
 
 ## 10. Összegzés
 
-Az 1–3. fejlesztési fázis teljes egészében elkészült. A rendszer jelenleg:
+Az 1–4. fejlesztési fázis teljes egészében elkészült. A rendszer jelenleg:
 
-* stabil adatgyűjtési és tárolási réteggel rendelkezik (1. fázis)
-* GLiNER entitáskinyerést, KeyBERT kulcsszavazást és relevancia-rankingot végez (2. fázis)
-* TF-IDF alapú témamodellezést futtat és automatikus hírleveleket generál (3. fázis)
-* a frontenden három NLP-panel (entitás, kulcsszó, téma) mutatja az eredményeket
+* Stabil adatgyűjtési, fordítási és tárolási réteggel rendelkezik
+* GLiNER NER-t, KeyBERT kulcsszavazást és relevancia-rankingot végez
+* TF-IDF témamodellezést és automatikus hírlevél-generálást futtat
+* FTS5 teljes szöveges keresést biztosít szűrőkkel és snippet kiemelésekkel
+* Négy felhasználói oldalt kínál: főoldal, keresés, cikkoldal, témaböngésző
+* Admin panelen látható a DB állapota, a forráskezelés és a job előzmények
 
-A következő fejlesztési irány a 4. fázis: teljes szöveges keresés és kibővített
-webes felület, amelyhez az NLP metaadatok (entitások, kulcsszavak, témák) már
-teljes egészében rendelkezésre állnak.
+A következő és egyben utolsó fejlesztési irány az 5. fázis:
+felhasználói fiókok, ütemezett futtatás, PostgreSQL opció és exportálás.
