@@ -150,15 +150,31 @@ def compute_topics(articles: list[dict], window: str) -> tuple[list[dict], list[
     assignments: list[dict] = []
 
     for topic_idx, (members, trend) in enumerate(clusters_with_trend):
-        label = _cluster_label(members, vectors)
-        merged: dict[str, float] = defaultdict(float)
+        # Label és keywords: a klaszter cikkeinek KeyBERT kulcsszavaiból,
+        # score szerint összesítve. Ez tiszta, értelmes kulcsszavakat ad
+        # ragozott TF-IDF tokenek helyett.
+        # Fallback: ha egy cikknek sincs KeyBERT kulcsszava, TF-IDF tokenek.
+        kw_scores: dict[str, float] = defaultdict(float)
         for idx in members:
-            for term, score in vectors[idx].items():
-                merged[term] += score
-        top_kw = sorted(merged.items(), key=lambda x: x[1], reverse=True)[:8]
+            for kw in articles[idx].get("keywords", []):
+                kw_scores[kw["keyword"]] += kw.get("score", 0.0)
+
+        if kw_scores:
+            top_kws = sorted(kw_scores.items(), key=lambda x: x[1], reverse=True)
+            label = " · ".join(k.capitalize() for k, _ in top_kws[:MAX_LABEL_TERMS])
+            keywords_str = ", ".join(k for k, _ in top_kws[:8])
+        else:
+            merged: dict[str, float] = defaultdict(float)
+            for idx in members:
+                for term, score in vectors[idx].items():
+                    merged[term] += score
+            top_kw = sorted(merged.items(), key=lambda x: x[1], reverse=True)[:8]
+            label = " · ".join(t.capitalize() for t, _ in top_kw[:MAX_LABEL_TERMS])
+            keywords_str = ", ".join(t for t, _ in top_kw)
+
         topics.append({
             "label": label,
-            "keywords": ", ".join(t for t, _ in top_kw),
+            "keywords": keywords_str,
             "article_count": len(members),
             "trend_score": trend,
         })
