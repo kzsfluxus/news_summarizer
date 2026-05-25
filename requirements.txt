@@ -12,3 +12,6 @@ deep-translator==1.11.4
 
 markdown-it-py==3.0.0
 mdit-py-plugins==0.4.2
+
+# NER – GLiNER (enyaml/gliner-multi-v2.1, ~400 MB, első indításkor töltődik le)
+gliner>=0.2.0
