@@ -35,13 +35,17 @@ def build_news_markdown(items: list[dict], window: str) -> str:
     ]
 
     for idx, item in enumerate(items, start=1):
-        title = item.get("title", "").strip()
+        # A title mező az eredeti (idegen nyelvű) cím – az Ollama prompt
+        # összezavarodhat tőle. A content_hu első mondatát használjuk
+        # témajelzőként, ami már le van fordítva magyarra.
+        content_hu = item.get("content_hu", "").strip()
+        first_sentence = content_hu.split(".")[0].strip() + "." if content_hu else ""
         source = item.get("source", "").strip()
         published = item.get("published", "").strip()
         summary = item.get("mini_summary_hu", "").strip()
 
         parts.extend([
-            f"## {idx}. {title}",
+            f"## {idx}. {first_sentence}",
             f"Forrás: {source}",
             f"Dátum: {published}",
             "",
