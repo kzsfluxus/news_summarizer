@@ -168,7 +168,9 @@ def _run_pipeline(job_id: str, window: str) -> None:
                     ents = extract_entities(item["clean_text_hu"])
                     if ents:
                         save_entities(aid, ents)
-                    stats["ner_ok"] += 1
+                        stats["ner_ok"] += 1
+                    else:
+                        stats["ner_errors"] += 1
                 except Exception:
                     stats["ner_errors"] += 1
 
