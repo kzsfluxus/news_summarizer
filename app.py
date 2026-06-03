@@ -23,6 +23,10 @@ API végpontok:
 
 from __future__ import annotations
 
+import os
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 from datetime import datetime, timedelta, timezone
 
 from flask import Flask, jsonify, render_template, request, send_file

@@ -28,18 +28,27 @@ class OllamaProcessError(RuntimeError):
 # Reasoning modellek (pl. Qwen3 / Racka) <think>...</think> blokkot tehetnek
 # a válasz elé. Ezt univerzálisan, utólag eltávolítjuk. Nem-reasoning modellnél
 # (Llama, Mistral, Gemma) ez no-op: nincs mire illeszkedjen, a szöveg változatlan.
-_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+#
+# Két lépés, mert a /no_think módban a modell HIBÁS, le nem zárt tageket is
+# emittálhat (pl. két árva <think> záró </think> nélkül). Az első regex a
+# rendesen lezárt blokkokat törli, a második az esetleg megmaradt, páratlan
+# nyitó/záró tageket takarítja.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_THINK_TAG_RE   = re.compile(r"</?think>", re.IGNORECASE)
 
 
 def _strip_thinking(text: str) -> str:
     """
-    Kiszedi a <think>...</think> blokkot, ha van. Csak akkor nyúl a szöveghez,
-    ha ténylegesen tartalmaz nyitó taget, így a nem gondolkodó modellek
-    kimenetét érintetlenül hagyja.
+    Eltávolítja a gondolkodási markereket: a lezárt <think>...</think> blokkokat
+    és az esetleg páratlanul maradt <think> / </think> tageket is.
+    Csak akkor nyúl a szöveghez, ha tartalmaz think taget, így a nem gondolkodó
+    modellek kimenetét érintetlenül hagyja.
     """
-    if "<think>" not in text.lower():
+    if "think>" not in text.lower():
         return text
-    return _THINK_RE.sub("", text).strip()
+    text = _THINK_BLOCK_RE.sub("", text)
+    text = _THINK_TAG_RE.sub("", text)
+    return text.strip()
 
 
 def _healthcheck() -> bool:
