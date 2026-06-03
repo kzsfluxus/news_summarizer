@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from typing import Optional
@@ -15,12 +16,30 @@ from config import (
     REQUEST_TIMEOUT,
     OLLAMA_TEMPERATURE,
     OLLAMA_NUM_PREDICT,
+    OLLAMA_NUM_CTX,
     OLLAMA_KEEP_ALIVE,
 )
 
 
 class OllamaProcessError(RuntimeError):
     pass
+
+
+# Reasoning modellek (pl. Qwen3 / Racka) <think>...</think> blokkot tehetnek
+# a válasz elé. Ezt univerzálisan, utólag eltávolítjuk. Nem-reasoning modellnél
+# (Llama, Mistral, Gemma) ez no-op: nincs mire illeszkedjen, a szöveg változatlan.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_thinking(text: str) -> str:
+    """
+    Kiszedi a <think>...</think> blokkot, ha van. Csak akkor nyúl a szöveghez,
+    ha ténylegesen tartalmaz nyitó taget, így a nem gondolkodó modellek
+    kimenetét érintetlenül hagyja.
+    """
+    if "<think>" not in text.lower():
+        return text
+    return _THINK_RE.sub("", text).strip()
 
 
 def _healthcheck() -> bool:
@@ -101,6 +120,11 @@ def run_ollama(prompt: str, model: str = OLLAMA_MODEL, url: str = OLLAMA_URL) ->
     """
     Lefuttatja a modellt egyszeri generálásra.
     A keep_alive=0 miatt a modell a válasz után kikerül a memóriából.
+
+    Csak univerzális opciókat küld (temperature, num_predict, num_ctx), így
+    bármely modellel működik. A num_ctx explicit megadása megakadályozza, hogy
+    az Ollama a rejtett 4096-os alapértékre csonkolja a promptot.
+    A válaszból utólag eltávolítjuk az esetleges <think> blokkot.
     """
     response = requests.post(
         url,
@@ -112,6 +136,7 @@ def run_ollama(prompt: str, model: str = OLLAMA_MODEL, url: str = OLLAMA_URL) ->
             "options": {
                 "temperature": OLLAMA_TEMPERATURE,
                 "num_predict": OLLAMA_NUM_PREDICT,
+                "num_ctx": OLLAMA_NUM_CTX,
             },
         },
         timeout=REQUEST_TIMEOUT,
@@ -119,4 +144,4 @@ def run_ollama(prompt: str, model: str = OLLAMA_MODEL, url: str = OLLAMA_URL) ->
     response.raise_for_status()
 
     result = response.json().get("response", "")
-    return result.strip()
+    return _strip_thinking(result.strip())
